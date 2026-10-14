@@ -122,7 +122,19 @@ impl Document {
     }
 
     pub fn line_count(&self) -> usize {
-        self.rope.len_lines().max(1)
+        let n = self.rope.len_lines();
+        if n == 0 {
+            return 1;
+        }
+        if let Some(last) = self.rope.get_byte(self.rope.len_bytes().saturating_sub(1)) {
+            if last == b'\n' {
+                n + 1
+            } else {
+                n
+            }
+        } else {
+            n
+        }
     }
 
     /// Byte offset of the start of `line` (0-based). Clamped.
