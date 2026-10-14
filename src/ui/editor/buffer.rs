@@ -122,19 +122,7 @@ impl Document {
     }
 
     pub fn line_count(&self) -> usize {
-        let n = self.rope.len_lines();
-        if n == 0 {
-            return 1;
-        }
-        if let Some(last) = self.rope.get_byte(self.rope.len_bytes().saturating_sub(1)) {
-            if last == b'\n' {
-                n + 1
-            } else {
-                n
-            }
-        } else {
-            n
-        }
+        self.rope.len_lines().max(1)
     }
 
     /// Byte offset of the start of `line` (0-based). Clamped.
@@ -150,17 +138,19 @@ impl Document {
         line.min(self.rope.len_lines().saturating_sub(1))
     }
 
-    /// Text of a single line including its trailing newline.
+    /// Text of a single line, without its trailing newline/EOL.
     pub fn line(&self, line: usize) -> String {
-        if line >= self.rope.len_lines() {
+        if line >= self.line_count() {
             return String::new();
         }
         let start = self.rope.line_to_char(line);
-        let end = self.rope.line_to_char(line + 1).min(self.rope.len_chars());
-        self.rope
-            .get_slice(start..end)
+        let next = self.rope.line_to_char((line + 1).min(self.rope.len_lines()));
+        let raw = self
+            .rope
+            .get_slice(start..next)
             .map(|s| s.to_string())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        raw.trim_end_matches(['\r', '\n']).to_string()
     }
 
     pub fn slice(&self, start: usize, end: usize) -> String {
@@ -308,7 +298,7 @@ mod tests {
         assert_eq!(d.byte_to_line(0), 0);
         assert_eq!(d.byte_to_line(8), 1);
         assert_eq!(d.line_to_byte(2), 12);
-        assert_eq!(d.line(0), "你好\n");
+        assert_eq!(d.line(0), "你好");
     }
 
     #[test]
