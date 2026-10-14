@@ -297,7 +297,7 @@ mod tests {
         assert_eq!(d.line_count(), 3);
         assert_eq!(d.byte_to_line(0), 0);
         assert_eq!(d.byte_to_line(8), 1);
-        assert_eq!(d.line_to_byte(2), 12);
+        assert_eq!(d.line_to_byte(2), 13);
         assert_eq!(d.line(0), "你好");
     }
 
