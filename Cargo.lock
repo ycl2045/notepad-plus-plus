@@ -567,11 +567,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "encoding_rs",
+ "gio",
+ "glib",
  "gtk4",
  "regex",
  "ropey",
  "serde",
  "syntect",
+ "thiserror",
 ]
 
 [[package]]
