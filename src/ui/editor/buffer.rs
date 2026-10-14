@@ -128,7 +128,7 @@ impl Document {
     /// Byte offset of the start of `line` (0-based). Clamped.
     pub fn line_to_byte(&self, line: usize) -> usize {
         let l = line.min(self.rope.len_lines());
-        self.rope.line_to_char(l).min(self.rope.len_chars()).max(0) as usize
+        self.rope.line_to_byte(l).min(self.rope.len_bytes())
     }
 
     /// 0-based line index containing `byte`. Clamped to the last line.

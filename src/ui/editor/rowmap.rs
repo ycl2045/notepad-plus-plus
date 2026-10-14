@@ -125,6 +125,6 @@ mod tests {
     #[test]
     fn gutter_width_scales_with_digits() {
         assert_eq!(RowMap::gutter_width(9, 8, 8), 24);
-        assert_eq!(RowMap::gutter_width(1000, 8, 8), 40);
+        assert_eq!(RowMap::gutter_width(1000, 8, 8), 48);
     }
 }

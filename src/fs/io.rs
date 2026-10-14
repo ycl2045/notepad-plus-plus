@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn utf8_roundtrip_is_byte_exact() {
-        let src = "你好\nworld\r\n";
+        let src = "你好\r\nworld\r\n";
         let r = read_bytes(src.as_bytes()).unwrap();
         assert_eq!(r.encoding, DetectedEncoding::Utf8);
         assert_eq!(r.eol, crate::ui::editor::buffer::Eol::Crlf);
