@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! File IO: BOM detection, encoding conversion, EOL normalisation (plan §3.6).
 //!
 //! Contract:

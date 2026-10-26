@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Extension → syntax mapping and language menu data.
 //!
 //! OWNED BY: U1 (contract) → U5 (≥20 languages, syntax fallback rules).

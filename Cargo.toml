@@ -11,6 +11,7 @@ glib = "0.22.10"
 gtk4 = { version = "0.11.5", features = ["v4_12"] }
 regex = "1.13.1"
 ropey = "=1.6.1"
-serde = "1.0.229"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0"
 syntect = { version = "5.3.0", default-features = false, features = ["default-fancy", "yaml-load"] }
 thiserror = "2.0.12"

@@ -6,4 +6,3 @@ pub mod scroll;
 pub mod view;
 
 pub use view::EditorView;
-pub use view::EditorView as EditorViewWidget;

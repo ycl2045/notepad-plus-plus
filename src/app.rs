@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
 

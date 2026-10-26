@@ -1,3 +1,4 @@
 pub mod editor;
-pub mod search;
+pub mod prefs;
+pub mod session;
 pub mod theme;
