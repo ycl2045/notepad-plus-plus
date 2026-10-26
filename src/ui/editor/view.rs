@@ -649,11 +649,20 @@ mod imp {
             let row_h = scroll.row_h;
             scroll.viewport_h = scroll.viewport_h.max(height as i32);
             scroll.content_h = (total_rows as i32) * row_h;
+            let caret_line = doc.byte_to_line(sel.head);
 
             // A scroll offset restored from the session could not be applied
             // before the geometry was known; now it can.
             if let Some(pending) = self.pending_scroll.replace(None) {
                 scroll.scroll_y = pending;
+                // The restored offset can leave the caret off screen - a
+                // hand-written session, or a file that changed since it was
+                // saved. The caret wins, because that is where the user is.
+                let first = scroll.first_row();
+                let visible = scroll.visible_row_count();
+                if caret_line < first || caret_line >= first + visible {
+                    scroll.scroll_to_row(caret_line);
+                }
             }
             self.row_h_ready.set(true);
             scroll.clamp();
@@ -669,8 +678,6 @@ mod imp {
                 &theme.gutter,
                 &graphene::Rect::new(0.0, 0.0, gutter_w, height),
             );
-
-            let caret_line = doc.byte_to_line(sel.head);
 
             for row in first..(first + visible).min(total_rows) {
                 let line = rowmap.row_to_line(row);

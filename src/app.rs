@@ -31,6 +31,9 @@ struct Shared {
     language_action: RefCell<Option<gio::SimpleAction>>,
     /// The session: the recent-files list and, after a close, the open files.
     session: RefCell<SessionState>,
+    /// True while a close sequence is in flight, so a second close request
+    /// does not start a second sequence.
+    closing: Cell<bool>,
 }
 
 impl Shared {
@@ -147,6 +150,7 @@ impl App {
             css,
             language_action: RefCell::new(None),
             session: RefCell::new(session),
+            closing: Cell::new(false),
         });
 
         let menu = build_menu();
@@ -607,6 +611,12 @@ fn build_session(shared: &Rc<Shared>) -> SessionState {
 /// Handle a close request: ask about the unsaved changes first, then persist
 /// the session and destroy the window.
 fn begin_close(shared: &Rc<Shared>) {
+    if shared.closing.get() {
+        // A close sequence is already running: a second request must not
+        // start another one on top of it.
+        return;
+    }
+    shared.closing.set(true);
     let unsaved = shared.tabs.unsaved_indices();
     if unsaved.is_empty() {
         finish_close(shared);
@@ -645,6 +655,7 @@ fn confirm_close_next(shared: &Rc<Shared>, unsaved: Vec<usize>, position: usize)
                         shared
                             .status
                             .set_text(&format!("Cannot save {path:?}: {err}"));
+                        shared.closing.set(false);
                         return;
                     }
                     confirm_close_next(&shared, unsaved, position + 1);
@@ -654,7 +665,7 @@ fn confirm_close_next(shared: &Rc<Shared>, unsaved: Vec<usize>, position: usize)
             // Button 2 is "Discard": the changes are thrown away.
             Ok(2) => confirm_close_next(&shared, unsaved, position + 1),
             // Button 0 is "Cancel": the window stays open.
-            _ => {}
+            _ => shared.closing.set(false),
         }
     });
 }
@@ -667,15 +678,18 @@ fn save_then_continue(shared: &Rc<Shared>, index: usize, unsaved: Vec<usize>, po
     let window = shared.window.clone();
     dialog.save(Some(&window), None::<&gio::Cancellable>, move |result| {
         let Ok(file) = result else {
+            shared.closing.set(false);
             return;
         };
         let Some(path) = file.path() else {
+            shared.closing.set(false);
             return;
         };
         if let Err(err) = shared.tabs.save_tab(index, &path) {
             shared
                 .status
                 .set_text(&format!("Cannot save {path:?}: {err}"));
+            shared.closing.set(false);
             return;
         }
         confirm_close_next(&shared, unsaved, position);
