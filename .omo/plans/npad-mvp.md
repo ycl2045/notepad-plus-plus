@@ -10,7 +10,7 @@
   - GTK4 + Rust 自绘 widget + `snapshot()` + pango 文本渲染在本机 Wayland 真实工作（900x563 PNG 已验证：行号 gutter、文本行、背景色均正确）。
   - GTK4 widget 关键 API 已确认：crate 名是 `gtk4`（非 `gtk`）；`Snapshot` 在 `gtk4::Snapshot`（含 `append_layout/append_color/translate/save/restore`）；`WidgetImpl::measure` 返回四元组；`font_metrics` 不存在（用 `pixel_size/pixel_extents`）；`Accessible` 需 gtk4 feature `v4_10`；IME 用 `EventControllerKey::set_im_context()` 而非手写 `filter_keypress`；`glib::wrapper!` 顺序是 `@extends` 在前、`@implements` 在后。
   - 截图工具：`tools/screenshot.sh`（应用内 render-to-texture，因 grim 在 GNOME Wayland 下不可用）。所有 UI 变更必须以此产出 PNG 并做像素/目视检查。
-  - GApplication 会把 argv 当文件打开，传入参一律走环境变量（`NPAD_SHOT`）。
+  - GApplication 会把 argv 当文件打开，传入参一律走环境变量（`NPAD_SHOT` 截图、`NPAD_AUTOCLOSE` 跑一遍关闭流程）。
 
 ## 1. MVP 范围（必须交付）
 
