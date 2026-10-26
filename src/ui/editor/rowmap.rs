@@ -37,12 +37,15 @@ impl RowMap {
         self.wrap = wrap;
         self.max_cols = max_cols;
         let lines = doc.line_count();
-        self.line_first_row = Vec::with_capacity(lines + 1);
-        self.row_line = Vec::with_capacity(lines + 1);
+        self.line_first_row.clear();
+        self.line_first_row.reserve(lines + 1);
+        self.row_line.clear();
+        self.row_line.reserve(lines + 1);
+        let wrap_rows = wrap && max_cols > 0;
         for line in 0..lines {
             self.line_first_row.push(self.row_line.len());
-            let text = doc.line(line);
-            let rows = if wrap && max_cols > 0 {
+            let rows = if wrap_rows {
+                let text = doc.line(line);
                 let chars = text.chars().filter(|c| *c != '\n' && *c != '\r').count();
                 (chars / max_cols) + 1
             } else {
@@ -74,9 +77,10 @@ impl RowMap {
     }
 
     pub fn row_to_line(&self, row: usize) -> usize {
-        self.row_line.get(row).copied().unwrap_or_else(|| {
-            self.row_line.last().copied().unwrap_or(0)
-        })
+        self.row_line
+            .get(row)
+            .copied()
+            .unwrap_or_else(|| self.row_line.last().copied().unwrap_or(0))
     }
 
     pub fn line_row_count(&self, line: usize) -> usize {
@@ -102,6 +106,17 @@ impl Default for RowMap {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
+
+    fn numbered_lines(count: usize) -> String {
+        let mut text = String::with_capacity(count * 16);
+        for i in 0..count {
+            text.push_str("let value = ");
+            text.push_str(&i.to_string());
+            text.push_str(";\n");
+        }
+        text
+    }
 
     #[test]
     fn no_wrap_is_one_row_per_line() {
@@ -126,5 +141,36 @@ mod tests {
     fn gutter_width_scales_with_digits() {
         assert_eq!(RowMap::gutter_width(9, 8, 8), 24);
         assert_eq!(RowMap::gutter_width(1000, 8, 8), 48);
+    }
+
+    #[test]
+    fn rebuild_of_50k_lines_is_fast() {
+        let doc = Document::with_text(&numbered_lines(50_000));
+        let mut rm = RowMap::new();
+
+        let start = Instant::now();
+        rm.ensure(&doc, false, 0);
+        let elapsed = start.elapsed();
+
+        eprintln!("rowmap rebuild of 50k lines: {elapsed:?}");
+        assert_eq!(rm.total_rows(), doc.line_count());
+        assert_eq!(rm.row_to_line(0), 0);
+        assert_eq!(rm.row_to_line(rm.total_rows() - 1), doc.line_count() - 1);
+        assert!(
+            elapsed.as_millis() < 100,
+            "50k-line rebuild took {elapsed:?}, budget is 100ms"
+        );
+    }
+
+    #[test]
+    fn wrap_budget_counts_soft_wrapped_rows() {
+        let doc = Document::with_text(&numbered_lines(50_000));
+        let mut rm = RowMap::new();
+        rm.ensure(&doc, true, 8);
+        assert!(
+            rm.total_rows() > doc.line_count(),
+            "wrapped rows must exceed the line count"
+        );
+        assert_eq!(rm.row_to_line(rm.total_rows() - 1), doc.line_count() - 1);
     }
 }
