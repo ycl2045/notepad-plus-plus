@@ -7,7 +7,6 @@ mod ui;
 
 fn main() {
     gtk4::init().expect("gtk init failed");
-    app::install_css();
 
     let application = gtk4::Application::builder()
         .application_id("dev.npad.Editor")
@@ -15,13 +14,25 @@ fn main() {
         .build();
 
     application.connect_activate(move |app| {
-        let state = app::App::new(app);
-        state.seed(SEED_TEXT);
+        let prefs = ui::prefs::Prefs::load();
+        let state = app::App::new(app, prefs);
+        // The demo tabs only appear when the session restored no file, so a
+        // restored workspace keeps its own active tab.
+        if state.is_empty() {
+            state.seed(SEED_TEXT);
+            state.seed(NOTE_TEXT);
+        }
         let shot = std::env::var("NPAD_SHOT").ok();
-        if let Some(path) = shot {
-            let editor = state.editor().clone();
+        let autoclose = std::env::var_os("NPAD_AUTOCLOSE").is_some();
+        if shot.is_some() || autoclose {
+            let window = state.window().clone();
             glib::idle_add_local_once(move || {
-                app::capture_to_png(&editor, &path);
+                if let Some(path) = shot {
+                    app::capture_to_png(&window, &path);
+                }
+                if autoclose {
+                    state.request_close();
+                }
             });
         }
     });
@@ -30,3 +41,5 @@ fn main() {
 }
 
 const SEED_TEXT: &str = "use std::collections::HashMap;\n\nfn main() {\n    let mut m = HashMap::new();\n    m.insert(\"npad\", \"linux\");\n}\n";
+
+const NOTE_TEXT: &str = "# npad\n\n- tabs, menus and a theme switch\n- Ctrl+D toggles the theme\n";

@@ -144,7 +144,9 @@ impl Document {
             return String::new();
         }
         let start = self.rope.line_to_char(line);
-        let next = self.rope.line_to_char((line + 1).min(self.rope.len_lines()));
+        let next = self
+            .rope
+            .line_to_char((line + 1).min(self.rope.len_lines()));
         let raw = self
             .rope
             .get_slice(start..next)
@@ -159,7 +161,9 @@ impl Document {
             return 0;
         }
         let start = self.rope.line_to_byte(line);
-        let end = self.rope.line_to_byte((line + 1).min(self.rope.len_lines()));
+        let end = self
+            .rope
+            .line_to_byte((line + 1).min(self.rope.len_lines()));
         if end <= start {
             return 0;
         }
@@ -236,9 +240,7 @@ impl Document {
             (Some((t, kind)), EditKind::Insert) | (Some((t, kind)), EditKind::Delete) if *kind == edit.kind && t.elapsed() <= COALESCE_WINDOW
         );
 
-        if can_coalesce
-            && let Some(last) = self.undo.last_mut()
-        {
+        if can_coalesce && let Some(last) = self.undo.last_mut() {
             match edit.kind {
                 EditKind::Insert => {
                     let contiguous = last.start + last.new.len() == edit.start;

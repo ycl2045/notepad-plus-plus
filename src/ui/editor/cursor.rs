@@ -156,7 +156,10 @@ pub struct Selection {
 
 impl Selection {
     pub fn new(byte: usize) -> Self {
-        Selection { anchor: byte, head: byte }
+        Selection {
+            anchor: byte,
+            head: byte,
+        }
     }
 
     /// Ordered (start, end) of the selected byte range. Empty when collapsed.
@@ -331,12 +334,19 @@ impl Selection {
         }
     }
 
-    pub fn move_vertical(&mut self, doc: &Document, lines_down: i64, sticky_col: Option<usize>, extend: bool) {
+    pub fn move_vertical(
+        &mut self,
+        doc: &Document,
+        lines_down: i64,
+        sticky_col: Option<usize>,
+        extend: bool,
+    ) {
         if !extend {
             self.collapse_to_head();
         }
         let cur_line = doc.byte_to_line(self.head) as i64;
-        let target = (cur_line + lines_down).clamp(0, doc.line_count().saturating_sub(1) as i64) as usize;
+        let target =
+            (cur_line + lines_down).clamp(0, doc.line_count().saturating_sub(1) as i64) as usize;
         let start = doc.line_to_byte(target);
         let line_text = doc.line(target);
         let without_eol = line_text.trim_end_matches(['\n', '\r']);

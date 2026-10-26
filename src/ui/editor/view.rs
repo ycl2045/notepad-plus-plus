@@ -26,7 +26,9 @@ use std::cell::RefCell;
 
 use gtk4::gdk;
 use gtk4::prelude::*;
-use gtk4::{graphene, pango, Accessible, Buildable, ConstraintTarget, Snapshot, subclass::prelude::*};
+use gtk4::{
+    Accessible, Buildable, ConstraintTarget, Snapshot, graphene, pango, subclass::prelude::*,
+};
 
 use crate::ui::editor::buffer::{Document, EditKind};
 use crate::ui::editor::cursor::Selection;
@@ -105,7 +107,9 @@ impl EditorView {
         let imp = self.imp();
         let mut sel = *imp.selection.borrow();
         let (start, end) = sel.range();
-        imp.doc.borrow_mut().replace(start, end - start, text, EditKind::Insert);
+        imp.doc
+            .borrow_mut()
+            .replace(start, end - start, text, EditKind::Insert);
         let new_pos = start + text.len();
         sel.anchor = new_pos;
         sel.head = new_pos;
@@ -159,8 +163,64 @@ impl EditorView {
         self.queue_draw();
     }
 
+    /// Set the syntect syntax used to highlight the text (`Rust`, `Plain Text`, ...).
+    pub fn set_language(&self, name: &str) {
+        let imp = self.imp();
+        if let Some(highlighter) = imp.highlighter.borrow_mut().as_mut() {
+            highlighter.set_language(name);
+        }
+        self.queue_draw();
+    }
+
     pub fn selection(&self) -> Selection {
         *self.imp().selection.borrow()
+    }
+
+    /// Byte offset of the caret (the head of the selection).
+    pub fn caret(&self) -> usize {
+        self.imp().selection.borrow().head
+    }
+
+    /// Put the caret on the byte offset `offset`.
+    ///
+    /// The offset is clamped to the end of the document, so a stale value
+    /// from a session file cannot point past the end of the text.
+    pub fn set_caret(&self, offset: usize) {
+        let imp = self.imp();
+        let len = imp.doc.borrow().len_bytes();
+        *imp.selection.borrow_mut() = Selection::new(offset.min(len));
+        imp.sticky_col.set(None);
+        imp.ensure_caret_visible();
+        self.queue_draw();
+    }
+
+    /// Current vertical scroll offset in pixels.
+    pub fn scroll_offset(&self) -> f64 {
+        let imp = self.imp();
+        // A pending offset has not been applied to the scroll state yet, but it
+        // is the value the view is about to scroll to.
+        if let Some(pending) = imp.pending_scroll.get() {
+            return pending;
+        }
+        imp.scroll.borrow().scroll_y
+    }
+
+    /// Scroll the viewport to the vertical offset `offset` (in pixels).
+    ///
+    /// The row height is only known after the first paint, so an offset that
+    /// arrives before that is kept in `pending_scroll` and applied by
+    /// `snapshot` once the geometry has been measured.
+    pub fn set_scroll_offset(&self, offset: f64) {
+        let imp = self.imp();
+        let offset = offset.max(0.0);
+        if imp.row_h_ready.get() {
+            let mut scroll = imp.scroll.borrow_mut();
+            scroll.scroll_y = offset;
+            scroll.clamp();
+        } else {
+            imp.pending_scroll.set(Some(offset));
+        }
+        self.queue_draw();
     }
 
     // --- private helpers ----------------------------------------------------
@@ -507,6 +567,10 @@ mod imp {
         pub im_filtered: std::cell::Cell<bool>,
         /// Text of the most recent IM commit.
         pub last_commit: RefCell<String>,
+        /// Scroll offset to apply once the row geometry has been measured.
+        pub pending_scroll: std::cell::Cell<Option<f64>>,
+        /// True once `snapshot` has measured the real row height.
+        pub row_h_ready: std::cell::Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -571,18 +635,29 @@ mod imp {
             let sel = *self.selection.borrow();
             let mut scroll = self.scroll.borrow_mut();
             let mut rowmap = self.rowmap.borrow_mut();
-            let row_h = scroll.row_h;
             rowmap.ensure(&doc, false, 0);
             let total_rows = rowmap.total_rows();
-            scroll.content_h = (total_rows as i32) * row_h;
-            scroll.clamp();
 
+            // The row height has to be measured before the content height:
+            // otherwise the scroll range is computed from the placeholder
+            // height and a restored scroll offset lands on the wrong row.
             if let Some(layout) = self.layout_cache.borrow().as_ref() {
                 layout.set_text("Ag");
                 let (_mw, mh) = layout.pixel_size();
                 scroll.row_h = mh.max(16);
             }
             let row_h = scroll.row_h;
+            scroll.viewport_h = scroll.viewport_h.max(height as i32);
+            scroll.content_h = (total_rows as i32) * row_h;
+
+            // A scroll offset restored from the session could not be applied
+            // before the geometry was known; now it can.
+            if let Some(pending) = self.pending_scroll.replace(None) {
+                scroll.scroll_y = pending;
+            }
+            self.row_h_ready.set(true);
+            scroll.clamp();
+
             let first = scroll.first_row();
             let visible = scroll.visible_row_count();
 
@@ -590,7 +665,10 @@ mod imp {
             let pad = 8.0f32;
 
             snapshot.append_color(&theme.bg, &graphene::Rect::new(0.0, 0.0, width, height));
-            snapshot.append_color(&theme.gutter, &graphene::Rect::new(0.0, 0.0, gutter_w, height));
+            snapshot.append_color(
+                &theme.gutter,
+                &graphene::Rect::new(0.0, 0.0, gutter_w, height),
+            );
 
             let caret_line = doc.byte_to_line(sel.head);
 

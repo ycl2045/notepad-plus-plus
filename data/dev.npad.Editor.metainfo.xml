@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.npad.Editor</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+  <name>npad</name>
+  <summary>Notepad++-like text editor for Linux</summary>
+  <description>
+    <p>npad is a native Linux text editor built with Rust and GTK4, using a hand-written editor widget instead of an embedded Scintilla view.</p>
+    <p>It opens files in multiple tabs, highlights their syntax with syntect for more than thirty languages, and offers a regular-expression capable find and replace engine with case sensitivity, wrap-around and replace-all support.</p>
+    <p>Buffers are stored in a ropey rope with a structured undo and redo stack, and encoding and line endings are handled transparently for UTF-8, UTF-16 and GBK files, including byte order marks and CRLF endings.</p>
+    <p>The editor restores your last session, remembers your preferences, and switches between a light and a dark theme.</p>
+  </description>
+  <launchable type="desktop-id">dev.npad.Editor.desktop</launchable>
+  <provides>
+    <binary>npad</binary>
+  </provides>
+  <categories>
+    <category>Utility</category>
+    <category>TextEditor</category>
+    <category>Development</category>
+  </categories>
+  <keywords>
+    <keyword>notepad</keyword>
+    <keyword>editor</keyword>
+    <keyword>text</keyword>
+    <keyword>code</keyword>
+  </keywords>
+  <releases>
+    <release version="0.1.0" date="2026-10-26">
+      <description>
+        <p>First MVP release: self-drawn GTK4 editor core, syntax highlighting, regular-expression find and replace, encoding and line-ending handling, session restore and light/dark themes.</p>
+      </description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

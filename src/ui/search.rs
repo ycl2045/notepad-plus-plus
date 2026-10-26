@@ -429,11 +429,18 @@ mod tests {
     #[test]
     fn empty_pattern_yields_no_matches() {
         let d = doc("hello");
-        assert!(find_all(&d, "", &literal(true, false), 0).unwrap().is_empty());
+        assert!(
+            find_all(&d, "", &literal(true, false), 0)
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(find_next(&d, "", &literal(true, false), 0).unwrap(), None);
 
         let mut d = doc("hello");
-        assert_eq!(replace_all(&mut d, "", "x", &literal(true, false)).unwrap(), 0);
+        assert_eq!(
+            replace_all(&mut d, "", "x", &literal(true, false)).unwrap(),
+            0
+        );
         assert_eq!(d.text(), "hello");
     }
 
@@ -445,7 +452,10 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
-        assert_eq!(find_next(&d, "zzz", &literal(true, false), 0).unwrap(), None);
+        assert_eq!(
+            find_next(&d, "zzz", &literal(true, false), 0).unwrap(),
+            None
+        );
 
         let mut d = doc("hello world");
         assert_eq!(

@@ -48,7 +48,10 @@ pub struct ReadResult {
 pub enum IoError {
     #[error("io: {0}")]
     Io(#[from] io::Error),
-    #[error("invalid bytes for detected encoding ({encoding}); {} byte(s) failed", failed)]
+    #[error(
+        "invalid bytes for detected encoding ({encoding}); {} byte(s) failed",
+        failed
+    )]
     Undecodable { encoding: String, failed: usize },
 }
 
@@ -137,7 +140,12 @@ fn decode_to_string(encoding: DetectedEncoding, body: &[u8]) -> Option<String> {
 }
 
 /// Write `text` back out using the original EOL and (optionally) a BOM.
-pub fn serialise_for_write(text: &str, eol: crate::ui::editor::buffer::Eol, encoding: DetectedEncoding, had_bom: bool) -> Vec<u8> {
+pub fn serialise_for_write(
+    text: &str,
+    eol: crate::ui::editor::buffer::Eol,
+    encoding: DetectedEncoding,
+    had_bom: bool,
+) -> Vec<u8> {
     let with_eol = match eol {
         crate::ui::editor::buffer::Eol::Lf => text.to_string(),
         crate::ui::editor::buffer::Eol::Crlf => text.replace('\n', "\r\n"),
@@ -187,7 +195,13 @@ pub fn read_path(path: &Path) -> Result<ReadResult, IoError> {
 }
 
 /// Exact inverse of `read_path` for the encodings we claim to support.
-pub fn write_path(path: &Path, text: &str, eol: crate::ui::editor::buffer::Eol, encoding: DetectedEncoding, had_bom: bool) -> io::Result<()> {
+pub fn write_path(
+    path: &Path,
+    text: &str,
+    eol: crate::ui::editor::buffer::Eol,
+    encoding: DetectedEncoding,
+    had_bom: bool,
+) -> io::Result<()> {
     let bytes = serialise_for_write(text, eol, encoding, had_bom);
     std::fs::write(path, bytes)
 }
@@ -226,7 +240,10 @@ mod tests {
         let r = read_bytes(&src).unwrap();
         assert_eq!(r.encoding, DetectedEncoding::Utf16Le);
         assert_eq!(r.text, "hi\n");
-        assert_eq!(serialise_for_write(&r.text, r.eol, r.encoding, r.had_bom), src);
+        assert_eq!(
+            serialise_for_write(&r.text, r.eol, r.encoding, r.had_bom),
+            src
+        );
     }
 
     #[test]
@@ -236,7 +253,10 @@ mod tests {
         let r = read_bytes(&gbk).unwrap();
         assert_eq!(r.encoding, DetectedEncoding::Gbk);
         assert_eq!(r.text, "中文测试");
-        assert_eq!(serialise_for_write(&r.text, r.eol, r.encoding, r.had_bom), gbk);
+        assert_eq!(
+            serialise_for_write(&r.text, r.eol, r.encoding, r.had_bom),
+            gbk
+        );
     }
 
     #[test]

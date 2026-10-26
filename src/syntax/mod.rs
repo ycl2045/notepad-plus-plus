@@ -13,36 +13,156 @@ pub struct LanguageDef {
 }
 
 pub const LANGUAGES: &[LanguageDef] = &[
-    LanguageDef { display: "Rust", syntax: "Rust", exts: &["rs"] },
-    LanguageDef { display: "C", syntax: "C", exts: &["c", "h"] },
-    LanguageDef { display: "C++", syntax: "C++", exts: &["cpp", "cxx", "cc", "hpp", "hxx"] },
-    LanguageDef { display: "Python", syntax: "Python", exts: &["py", "pyw"] },
-    LanguageDef { display: "JavaScript", syntax: "JavaScript", exts: &["js", "mjs", "cjs"] },
-    LanguageDef { display: "TypeScript", syntax: "TypeScript", exts: &["ts", "tsx"] },
-    LanguageDef { display: "JSON", syntax: "JSON", exts: &["json", "jsonc"] },
-    LanguageDef { display: "HTML", syntax: "HTML", exts: &["html", "htm", "xhtml"] },
-    LanguageDef { display: "CSS", syntax: "CSS", exts: &["css", "scss", "sass", "less"] },
-    LanguageDef { display: "XML", syntax: "XML", exts: &["xml", "svg", "ui", "plist"] },
-    LanguageDef { display: "Markdown", syntax: "Markdown", exts: &["md", "markdown"] },
-    LanguageDef { display: "Shell", syntax: "Shell (Bash)", exts: &["sh", "bash", "zsh"] },
-    LanguageDef { display: "Python (Jinja)", syntax: "HTML (Jinja2)", exts: &["jinja", "j2"] },
-    LanguageDef { display: "Go", syntax: "Go", exts: &["go"] },
-    LanguageDef { display: "Java", syntax: "Java", exts: &["java"] },
-    LanguageDef { display: "Kotlin", syntax: "Kotlin", exts: &["kt", "kts"] },
-    LanguageDef { display: "Swift", syntax: "Swift", exts: &["swift"] },
-    LanguageDef { display: "Ruby", syntax: "Ruby", exts: &["rb", "rake", "gemspec"] },
-    LanguageDef { display: "PHP", syntax: "PHP", exts: &["php"] },
-    LanguageDef { display: "SQL", syntax: "SQL", exts: &["sql"] },
-    LanguageDef { display: "YAML", syntax: "YAML", exts: &["yaml", "yml"] },
-    LanguageDef { display: "TOML", syntax: "TOML", exts: &["toml", "lock"] },
-    LanguageDef { display: "INI", syntax: "INI", exts: &["ini", "cfg", "conf"] },
-    LanguageDef { display: "Makefile", syntax: "Makefile", exts: &["mak", "mk"] },
-    LanguageDef { display: "CMake", syntax: "CMake", exts: &["cmake"] },
-    LanguageDef { display: "Diff", syntax: "Diff", exts: &["diff", "patch"] },
-    LanguageDef { display: "Lua", syntax: "Lua", exts: &["lua"] },
-    LanguageDef { display: "Perl", syntax: "Perl", exts: &["pl", "pm"] },
-    LanguageDef { display: "PowerShell", syntax: "PowerShell", exts: &["ps1", "psm1"] },
-    LanguageDef { display: "Batchfile", syntax: "Batch File", exts: &["bat", "cmd"] },
+    LanguageDef {
+        display: "Rust",
+        syntax: "Rust",
+        exts: &["rs"],
+    },
+    LanguageDef {
+        display: "C",
+        syntax: "C",
+        exts: &["c", "h"],
+    },
+    LanguageDef {
+        display: "C++",
+        syntax: "C++",
+        exts: &["cpp", "cxx", "cc", "hpp", "hxx"],
+    },
+    LanguageDef {
+        display: "Python",
+        syntax: "Python",
+        exts: &["py", "pyw"],
+    },
+    LanguageDef {
+        display: "JavaScript",
+        syntax: "JavaScript",
+        exts: &["js", "mjs", "cjs"],
+    },
+    LanguageDef {
+        display: "TypeScript",
+        syntax: "TypeScript",
+        exts: &["ts", "tsx"],
+    },
+    LanguageDef {
+        display: "JSON",
+        syntax: "JSON",
+        exts: &["json", "jsonc"],
+    },
+    LanguageDef {
+        display: "HTML",
+        syntax: "HTML",
+        exts: &["html", "htm", "xhtml"],
+    },
+    LanguageDef {
+        display: "CSS",
+        syntax: "CSS",
+        exts: &["css", "scss", "sass", "less"],
+    },
+    LanguageDef {
+        display: "XML",
+        syntax: "XML",
+        exts: &["xml", "svg", "ui", "plist"],
+    },
+    LanguageDef {
+        display: "Markdown",
+        syntax: "Markdown",
+        exts: &["md", "markdown"],
+    },
+    LanguageDef {
+        display: "Shell",
+        syntax: "Shell (Bash)",
+        exts: &["sh", "bash", "zsh"],
+    },
+    LanguageDef {
+        display: "Python (Jinja)",
+        syntax: "HTML (Jinja2)",
+        exts: &["jinja", "j2"],
+    },
+    LanguageDef {
+        display: "Go",
+        syntax: "Go",
+        exts: &["go"],
+    },
+    LanguageDef {
+        display: "Java",
+        syntax: "Java",
+        exts: &["java"],
+    },
+    LanguageDef {
+        display: "Kotlin",
+        syntax: "Kotlin",
+        exts: &["kt", "kts"],
+    },
+    LanguageDef {
+        display: "Swift",
+        syntax: "Swift",
+        exts: &["swift"],
+    },
+    LanguageDef {
+        display: "Ruby",
+        syntax: "Ruby",
+        exts: &["rb", "rake", "gemspec"],
+    },
+    LanguageDef {
+        display: "PHP",
+        syntax: "PHP",
+        exts: &["php"],
+    },
+    LanguageDef {
+        display: "SQL",
+        syntax: "SQL",
+        exts: &["sql"],
+    },
+    LanguageDef {
+        display: "YAML",
+        syntax: "YAML",
+        exts: &["yaml", "yml"],
+    },
+    LanguageDef {
+        display: "TOML",
+        syntax: "TOML",
+        exts: &["toml", "lock"],
+    },
+    LanguageDef {
+        display: "INI",
+        syntax: "INI",
+        exts: &["ini", "cfg", "conf"],
+    },
+    LanguageDef {
+        display: "Makefile",
+        syntax: "Makefile",
+        exts: &["mak", "mk"],
+    },
+    LanguageDef {
+        display: "CMake",
+        syntax: "CMake",
+        exts: &["cmake"],
+    },
+    LanguageDef {
+        display: "Diff",
+        syntax: "Diff",
+        exts: &["diff", "patch"],
+    },
+    LanguageDef {
+        display: "Lua",
+        syntax: "Lua",
+        exts: &["lua"],
+    },
+    LanguageDef {
+        display: "Perl",
+        syntax: "Perl",
+        exts: &["pl", "pm"],
+    },
+    LanguageDef {
+        display: "PowerShell",
+        syntax: "PowerShell",
+        exts: &["ps1", "psm1"],
+    },
+    LanguageDef {
+        display: "Batchfile",
+        syntax: "Batch File",
+        exts: &["bat", "cmd"],
+    },
 ];
 
 pub fn ext_to_syntax(path: &std::path::Path) -> String {

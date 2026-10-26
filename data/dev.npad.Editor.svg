@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-labelledby="npad-icon-title">
+  <title id="npad-icon-title">npad</title>
+  <desc>npad application icon: a dark rounded square carrying a light letter N.</desc>
+  <defs>
+    <linearGradient id="npad-icon-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3d4453"/>
+      <stop offset="1" stop-color="#252a35"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="20" ry="20" fill="url(#npad-icon-bg)"/>
+  <rect x="4.75" y="4.75" width="118.5" height="118.5" rx="19.25" ry="19.25" fill="none" stroke="#59617a" stroke-width="1.5"/>
+  <path d="M 34 32 H 46 V 96 H 34 Z M 82 32 H 94 V 96 H 82 Z M 46 32 H 58 L 82 96 H 70 Z" fill="#e8ecf5"/>
+  <rect x="46" y="103" width="36" height="4" rx="2" ry="2" fill="#7aa2f7"/>
+</svg>
