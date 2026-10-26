@@ -153,6 +153,46 @@ impl Document {
         raw.trim_end_matches(['\r', '\n']).to_string()
     }
 
+    /// UTF-8 byte length of `line`, excluding its trailing EOL. Clamped.
+    pub fn line_len(&self, line: usize) -> usize {
+        if line >= self.line_count() {
+            return 0;
+        }
+        let start = self.rope.line_to_byte(line);
+        let end = self.rope.line_to_byte((line + 1).min(self.rope.len_lines()));
+        if end <= start {
+            return 0;
+        }
+        let raw = match self.rope.get_byte_slice(start..end) {
+            Some(s) => s,
+            None => return 0,
+        };
+        let mut len = raw.len_bytes();
+        while len > 0 {
+            let b = raw.byte(len - 1);
+            if b != b'\n' && b != b'\r' {
+                break;
+            }
+            len -= 1;
+        }
+        len
+    }
+
+    /// Byte offset of the character at `char_idx` (characters, not bytes). Clamped.
+    pub fn char_to_byte(&self, char_idx: usize) -> usize {
+        let c = char_idx.min(self.rope.len_chars());
+        self.rope.char_to_byte(c).min(self.rope.len_bytes())
+    }
+
+    /// Character index of `byte` (characters, not bytes). Clamped.
+    ///
+    /// A byte inside a multi-byte character resolves to the character that
+    /// contains it.
+    pub fn byte_to_char(&self, byte: usize) -> usize {
+        let b = byte.min(self.rope.len_bytes());
+        self.rope.byte_to_char(b)
+    }
+
     pub fn slice(&self, start: usize, end: usize) -> String {
         let len = self.rope.len_bytes();
         let lo = start.min(end).min(len);
@@ -196,29 +236,29 @@ impl Document {
             (Some((t, kind)), EditKind::Insert) | (Some((t, kind)), EditKind::Delete) if *kind == edit.kind && t.elapsed() <= COALESCE_WINDOW
         );
 
-        if can_coalesce {
-            if let Some(last) = self.undo.last_mut() {
-                match edit.kind {
-                    EditKind::Insert => {
-                        let contiguous = last.start + last.new.len() == edit.start;
-                        if contiguous && !last.old.is_empty() == false {
-                            last.new.push_str(&edit.new);
-                            self.last_edit = Some((Instant::now(), edit.kind));
-                            return;
-                        }
+        if can_coalesce
+            && let Some(last) = self.undo.last_mut()
+        {
+            match edit.kind {
+                EditKind::Insert => {
+                    let contiguous = last.start + last.new.len() == edit.start;
+                    if contiguous && last.old.is_empty() {
+                        last.new.push_str(&edit.new);
+                        self.last_edit = Some((Instant::now(), edit.kind));
+                        return;
                     }
-                    EditKind::Delete => {
-                        if edit.start + edit.old.len() == last.start {
-                            let mut old = edit.old;
-                            old.push_str(&last.old);
-                            last.old = old;
-                            last.start = edit.start;
-                            self.last_edit = Some((Instant::now(), edit.kind));
-                            return;
-                        }
-                    }
-                    EditKind::Structural => {}
                 }
+                EditKind::Delete => {
+                    if edit.start + edit.old.len() == last.start {
+                        let mut old = edit.old;
+                        old.push_str(&last.old);
+                        last.old = old;
+                        last.start = edit.start;
+                        self.last_edit = Some((Instant::now(), edit.kind));
+                        return;
+                    }
+                }
+                EditKind::Structural => {}
             }
         }
 
@@ -306,5 +346,60 @@ mod tests {
         assert_eq!(Eol::detect("a\r\nb\r\n"), Eol::Crlf);
         assert_eq!(Eol::detect("a\nb\n"), Eol::Lf);
         assert_eq!(Eol::detect("a\rb\r"), Eol::Cr);
+    }
+
+    #[test]
+    fn line_len_excludes_the_eol() {
+        let d = Document::with_text("abc\ndef\n");
+        assert_eq!(d.line_len(0), 3);
+        assert_eq!(d.line_len(1), 3);
+        assert_eq!(d.line_len(2), 0);
+        assert_eq!(d.line_len(99), 0);
+    }
+
+    #[test]
+    fn line_len_handles_crlf_and_multibyte() {
+        let d = Document::with_text("a\r\n你好\r\n");
+        assert_eq!(d.line_len(0), 1);
+        assert_eq!(d.line_len(1), 6);
+        assert_eq!(d.line(1), "你好");
+    }
+
+    #[test]
+    fn char_and_byte_conversions_round_trip() {
+        let d = Document::with_text("你好\nworld");
+        assert_eq!(d.char_to_byte(0), 0);
+        assert_eq!(d.char_to_byte(2), 6);
+        assert_eq!(d.char_to_byte(3), 7);
+        assert_eq!(d.byte_to_char(0), 0);
+        assert_eq!(d.byte_to_char(6), 2);
+        assert_eq!(d.byte_to_char(7), 3);
+        assert_eq!(d.char_to_byte(d.byte_to_char(6)), 6);
+        assert_eq!(d.char_to_byte(d.byte_to_char(7)), 7);
+    }
+
+    #[test]
+    fn char_and_byte_conversions_clamp() {
+        let d = Document::with_text("你好");
+        assert_eq!(d.char_to_byte(9999), 6);
+        assert_eq!(d.byte_to_char(9999), 2);
+        assert_eq!(d.byte_to_char(1), 0);
+        assert_eq!(d.char_to_byte(d.byte_to_char(1)), 0);
+    }
+
+    #[test]
+    fn replacing_fifty_megabytes_is_fast() {
+        let mut d = Document::new();
+        let payload = "x".repeat(50 * 1024 * 1024);
+        let started = Instant::now();
+        d.replace(0, 0, &payload, EditKind::Insert);
+        let elapsed = started.elapsed();
+        assert_eq!(d.len_bytes(), payload.len());
+        let budget = if cfg!(debug_assertions) {
+            Duration::from_secs(30)
+        } else {
+            Duration::from_secs(2)
+        };
+        assert!(elapsed < budget, "50MB replace took {elapsed:?}");
     }
 }
