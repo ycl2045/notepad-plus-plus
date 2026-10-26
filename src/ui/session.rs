@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Session state: open files, caret positions, recent files, window geometry.
 //!
 //! Persisted as JSON under the user config directory so the editor restores

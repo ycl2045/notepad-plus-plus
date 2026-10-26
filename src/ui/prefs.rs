@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! User preferences, persisted as JSON under the user config directory.
 //!
 //! OWNED BY: U10.
@@ -83,10 +84,12 @@ mod tests {
 
     #[test]
     fn roundtrips_through_json() {
-        let mut p = Prefs::default();
-        p.tab_width = 8;
-        p.wrap = true;
-        p.theme = ThemeMode::Light;
+        let p = Prefs {
+            tab_width: 8,
+            wrap: true,
+            theme: ThemeMode::Light,
+            ..Prefs::default()
+        };
         let raw = serde_json::to_string(&p).unwrap();
         let back: Prefs = serde_json::from_str(&raw).unwrap();
         assert_eq!(back, p);
