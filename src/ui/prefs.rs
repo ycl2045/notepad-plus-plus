@@ -3,24 +3,12 @@
 //!
 //! OWNED BY: U10.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::ui::paths::{config_dir, write_atomic};
 use crate::ui::theme::ThemeMode;
-
-fn config_dir() -> PathBuf {
-    std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or_else(|| {
-            let home = std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("."));
-            home.join(".config")
-        })
-        .join("npad")
-}
 
 pub fn prefs_path() -> PathBuf {
     config_dir().join("prefs.json")
@@ -51,27 +39,63 @@ impl Default for Prefs {
 }
 
 impl Prefs {
+    /// Load the preferences.
+    ///
+    /// A missing or corrupt file is not an error here: the defaults are used
+    /// instead. Use [`Prefs::load_strict`] when the reason matters.
     pub fn load() -> Self {
-        match std::fs::read_to_string(prefs_path()) {
-            Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
-            Err(_) => Prefs::default(),
-        }
+        Self::load_strict().unwrap_or_default()
     }
 
+    /// Load the preferences and report why that failed.
+    ///
+    /// The error is a [`serde_json::Error`]; for a missing or unreadable file
+    /// it carries the underlying I/O error (`Error::is_io`).
+    pub fn load_strict() -> Result<Prefs, serde_json::Error> {
+        Self::load_from(&prefs_path())
+    }
+
+    /// Load the preferences from an explicit path.
+    pub fn load_from(path: &Path) -> Result<Prefs, serde_json::Error> {
+        let raw = std::fs::read_to_string(path).map_err(serde_json::Error::io)?;
+        serde_json::from_str(&raw)
+    }
+
+    /// Persist the preferences.
+    ///
+    /// The write is atomic: the previous file stays intact if the write fails.
     pub fn save(&self) -> std::io::Result<()> {
-        let path = prefs_path();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
+        self.save_to(&prefs_path())
+    }
+
+    /// Persist the preferences to an explicit path, atomically.
+    pub fn save_to(&self, path: &Path) -> std::io::Result<()> {
         let raw = serde_json::to_string_pretty(self)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        std::fs::write(path, raw)
+        write_atomic(path, raw.as_bytes())
+    }
+
+    /// Font description in the `pango::FontDescription` string form, e.g.
+    /// `"monospace 11"`.
+    ///
+    /// A blank family falls back to `monospace` and a zero size is clamped to
+    /// `1`, so the result is always parseable by pango.
+    pub fn font_description(&self) -> String {
+        let family = self.font_family.trim();
+        let family = if family.is_empty() {
+            "monospace"
+        } else {
+            family
+        };
+        let size = self.font_size.max(1);
+        format!("{family} {size}")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::paths::temp_dir;
 
     #[test]
     fn defaults_are_sane() {
@@ -100,5 +124,67 @@ mod tests {
         let back: Prefs = serde_json::from_str("{\"tab_width\": 2}").unwrap();
         assert_eq!(back.tab_width, 2);
         assert_eq!(back.font_size, Prefs::default().font_size);
+    }
+
+    #[test]
+    fn font_description_uses_the_pango_format() {
+        assert_eq!(Prefs::default().font_description(), "monospace 11");
+        let p = Prefs {
+            font_family: String::from("DejaVu Sans Mono"),
+            font_size: 14,
+            ..Prefs::default()
+        };
+        assert_eq!(p.font_description(), "DejaVu Sans Mono 14");
+    }
+
+    #[test]
+    fn font_description_falls_back_for_unusable_values() {
+        let p = Prefs {
+            font_family: String::from("   "),
+            font_size: 0,
+            ..Prefs::default()
+        };
+        assert_eq!(p.font_description(), "monospace 1");
+    }
+
+    #[test]
+    fn save_then_load_round_trips() {
+        let dir = temp_dir("prefs-roundtrip");
+        let path = dir.join("prefs.json");
+        let prefs = Prefs {
+            theme: ThemeMode::Light,
+            font_family: String::from("Noto Sans Mono"),
+            font_size: 13,
+            tab_width: 8,
+            wrap: true,
+            restore_session: false,
+        };
+        prefs.save_to(&path).expect("save prefs");
+        let back = Prefs::load_from(&path).expect("load prefs");
+        assert_eq!(back, prefs);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn load_strict_reports_a_missing_file() {
+        let dir = temp_dir("prefs-missing");
+        let err = Prefs::load_from(&dir.join("prefs.json")).expect_err("missing file must fail");
+        assert!(err.is_io());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn load_strict_reports_a_corrupt_file() {
+        let dir = temp_dir("prefs-corrupt");
+        let path = dir.join("prefs.json");
+        std::fs::write(&path, "{not json").expect("write");
+        let err = Prefs::load_from(&path).expect_err("corrupt file must fail");
+        assert!(!err.is_io());
+        // The lenient loader still yields the defaults.
+        assert_eq!(
+            Prefs::load_from(&path).unwrap_or_default(),
+            Prefs::default()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

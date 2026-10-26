@@ -1,4 +1,5 @@
 pub mod editor;
+pub mod paths;
 pub mod prefs;
 pub mod search;
 pub mod session;
