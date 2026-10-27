@@ -75,6 +75,7 @@ tests/
 ### 3.5 高亮：syntect 行缓存
 - 决定：`HighlightCache { epoch, lines: Lru<usize, Vec<(Range<usize>, HighlightStyle)>> }`，只算可见行 ± 余量；每次编辑 `epoch++` 后失效相关行。语法按扩展名→`SyntaxSet.find_syntax_by_extension`，按 shebang/第一行二次兜底。
 - 被否：整篇一次性着色（10MB 文件卡死）；不缓存（每帧着色卡顿）。
+- 已落地：`Highlighter` 增加 `dark` 字段 + `set_dark()`，切换 syntect 主题（`base16-ocean.dark` / `base16-ocean.light`）并清缓存；`EditorView` 按 span 逐段绘制，各自取色，`set_theme` 时同步切换。
 
 ### 3.6 编码与换行
 - 决定：读时按 BOM（UTF-8/UTF-16LE/BE）→ 否则 UTF-8 严格校验 → 否则 GBK(`encoding_rs`)；EOL 归一化为 `\n` 保存于内存，写回时按原 EOL 还原；`Document.eol` 记录 `\n|"\r\n"|"\r"`。保存时永远带 BOM iff 原文件有 BOM（除新建 UTF-8 无 BOM）。
@@ -87,6 +88,7 @@ tests/
 ### 3.8 主题
 - 决定：`prefs.theme = dark|light`；应用层用 `gtk::CssProvider` 设窗口样式，编辑器颜色（bg/fg/gutter/cursor/selection/current-line/number）由 EditorView 从当前主题读取渲染。切换即时 `queue_draw()` 全量重绘。
 - 被否：仅靠系统暗色跟随（无法手动切换）；把颜色写死在 widget（换主题要改代码）。
+- 已落地：CSS 必须同时覆盖 `windowbackground`（toplevel 背景来自该节点，不是 `window.npad-window`）与 `menubar`，并给 `box` 设背景色；否则亮色主题下窗口与菜单栏仍是黑色。GTK4 默认主题给按钮画了背景图，改背景色要同时写 `background-image: none`。
 
 ## 4. 工作单元、依赖与验收
 
@@ -129,3 +131,19 @@ tests/
 1. 默认字体（如 `monospace 11` / `JetBrains Mono`）与是否内置字体回退链？
 2. 「会话记忆」是否默认开启（每次退出全量保存）还是仅在正常退出时保存？
 3. 打包只交付 `target/release/npad` + `.desktop`，还是要出 `.deb`/flatpak？
+
+## 8. 进展状态（2026-10-27）
+
+已完成并推送（`master`，`tools/verify.sh` 全绿：106 tests + clippy 无告警 + 截图）：
+
+- U1–U10、U13 全量完成；U11 菜单/快捷键/动作已可用；U12 主题切换即时生效、状态栏显示 `Ln/Col | encoding | EOL | language`。
+- 语法高亮已从「只算 span」推进到**逐 span 绘制**，配色跟随明暗主题。
+- 明暗两套 chrome（toplevel 背景、菜单栏、header bar、状态栏）已随主题切换，亮色主题不再残留黑底。
+- 查找/替换栏、查找上一个、正则替换全部、选择与多行选区绘制已接线。
+
+仍待完成（下一批）：
+
+1. **书签**（§1 第 4 项）：切换/跳转尚未实现，`Theme.bookmark` 仍为未使用字段。
+2. **最近文件菜单**：已持久化但没有菜单入口。
+3. **gutter 宽度**：当前按固定 8 px/数字估算，与实际字体步进不符，三位以上行号会压到正文；需按最大行号数字数与真实步进重算。
+4. `Ctrl+B` 尚未绑定到书签动作（等书签落地后再接）。
