@@ -1,9 +1,20 @@
+use std::rc::Rc;
+use std::time::Duration;
+
 use gtk4::prelude::*;
 
 mod app;
 mod fs;
 mod syntax;
 mod ui;
+
+/// Delay between the startup and the action that the test hook activates.
+const HOOK_ACTION_DELAY: Duration = Duration::from_millis(100);
+
+/// Delay between the action and the capture. The capture has to follow the
+/// frame that renders the effect of the action, so it cannot be part of the
+/// same callback.
+const HOOK_CAPTURE_DELAY: Duration = Duration::from_millis(180);
 
 fn main() {
     gtk4::init().expect("gtk init failed");
@@ -15,7 +26,7 @@ fn main() {
 
     application.connect_activate(move |app| {
         let prefs = ui::prefs::Prefs::load();
-        let state = app::App::new(app, prefs);
+        let state = Rc::new(app::App::new(app, prefs));
         // The demo tabs only appear when the session restored no file, so a
         // restored workspace keeps its own active tab.
         if state.is_empty() {
@@ -23,16 +34,24 @@ fn main() {
             state.seed(NOTE_TEXT);
         }
         let shot = std::env::var("NPAD_SHOT").ok();
+        let action = std::env::var("NPAD_ACTION").ok();
         let autoclose = std::env::var_os("NPAD_AUTOCLOSE").is_some();
-        if shot.is_some() || autoclose {
+        if shot.is_some() || action.is_some() || autoclose {
             let window = state.window().clone();
-            glib::idle_add_local_once(move || {
-                if let Some(path) = shot {
-                    app::capture_to_png(&window, &path);
+            let action_state = state.clone();
+            glib::timeout_add_local_once(HOOK_ACTION_DELAY, move || {
+                if let Some(name) = action {
+                    action_state.activate(&name);
                 }
-                if autoclose {
-                    state.request_close();
-                }
+                let capture_state = state.clone();
+                glib::timeout_add_local_once(HOOK_CAPTURE_DELAY, move || {
+                    if let Some(path) = shot {
+                        app::capture_to_png(&window, &path);
+                    }
+                    if autoclose {
+                        capture_state.request_close();
+                    }
+                });
             });
         }
     });

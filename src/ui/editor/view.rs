@@ -37,6 +37,11 @@ use crate::ui::editor::rowmap::RowMap;
 use crate::ui::editor::scroll::ScrollState;
 use crate::ui::theme::Theme;
 
+/// Sample used to measure the advance width of one character. The editor
+/// font is monospace, so the width of a run of characters divided by their
+/// count is the advance of a single one.
+const CHAR_WIDTH_SAMPLE: &str = "MMMMMMMMMM";
+
 glib::wrapper! {
     pub struct EditorView(ObjectSubclass<imp::EditorView>)
         @extends gtk4::Widget,
@@ -191,6 +196,21 @@ impl EditorView {
         *imp.selection.borrow_mut() = Selection::new(offset.min(len));
         imp.sticky_col.set(None);
         imp.ensure_caret_visible();
+        self.queue_draw();
+    }
+
+    /// Select the whole document.
+    ///
+    /// The caret ends up at the end of the text, the way every editor does
+    /// it; the viewport is left where it is.
+    pub fn select_all(&self) {
+        let imp = self.imp();
+        let len = imp.doc.borrow().len_bytes();
+        let mut sel = *imp.selection.borrow();
+        sel.anchor = 0;
+        sel.head = len;
+        *imp.selection.borrow_mut() = sel;
+        imp.sticky_col.set(None);
         self.queue_draw();
     }
 
@@ -641,10 +661,17 @@ mod imp {
             // The row height has to be measured before the content height:
             // otherwise the scroll range is computed from the placeholder
             // height and a restored scroll offset lands on the wrong row.
+            let mut char_w = 8.0f32;
             if let Some(layout) = self.layout_cache.borrow().as_ref() {
                 layout.set_text("Ag");
                 let (_mw, mh) = layout.pixel_size();
                 scroll.row_h = mh.max(16);
+                layout.set_text(CHAR_WIDTH_SAMPLE);
+                let (sw, _sh) = layout.pixel_size();
+                let count = CHAR_WIDTH_SAMPLE.chars().count() as f32;
+                if sw > 0 && count > 0.0 {
+                    char_w = sw as f32 / count;
+                }
             }
             let row_h = scroll.row_h;
             scroll.viewport_h = scroll.viewport_h.max(height as i32);
@@ -679,6 +706,8 @@ mod imp {
                 &graphene::Rect::new(0.0, 0.0, gutter_w, height),
             );
 
+            let (sel_start, sel_end) = sel.range();
+
             for row in first..(first + visible).min(total_rows) {
                 let line = rowmap.row_to_line(row);
                 let row_h_f = row_h as f32;
@@ -689,6 +718,23 @@ mod imp {
                         &theme.current_line,
                         &graphene::Rect::new(gutter_w, y - 4.0, width - gutter_w, row_h_f),
                     );
+                }
+
+                if sel_end > sel_start {
+                    let line_start = doc.line_to_byte(line);
+                    let line_end = doc.line_to_byte(line + 1);
+                    let from = sel_start.max(line_start);
+                    let to = sel_end.min(line_end);
+                    if to > from {
+                        let col_from = doc.slice(line_start, from).chars().count();
+                        let col_to = col_from + doc.slice(from, to).chars().count();
+                        let x_from = gutter_w + pad + col_from as f32 * char_w;
+                        let x_to = gutter_w + pad + col_to as f32 * char_w;
+                        snapshot.append_color(
+                            &theme.selection,
+                            &graphene::Rect::new(x_from, y, (x_to - x_from).max(1.0), row_h_f),
+                        );
+                    }
                 }
 
                 let num = format!("{}", line + 1);
@@ -716,12 +762,10 @@ mod imp {
 
             let caret_y = caret_line as f32 * (row_h as f32) - scroll.scroll_y as f32 + pad;
             let caret_col = sel.column(&doc);
-            let x = gutter_w + pad + caret_col as f32 * 8.0;
-            let _ = caret_col;
-            let _ = x;
+            let caret_x = gutter_w + pad + caret_col as f32 * char_w;
             snapshot.append_color(
                 &theme.caret,
-                &graphene::Rect::new(gutter_w + pad, caret_y, 1.5, row_h as f32 - 2.0),
+                &graphene::Rect::new(caret_x, caret_y, 1.5, row_h as f32 - 2.0),
             );
             self.caret_blink.set(!self.caret_blink.get());
         }

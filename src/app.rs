@@ -99,6 +99,7 @@ impl Shared {
 pub struct App {
     window: gtk4::ApplicationWindow,
     shared: Rc<Shared>,
+    actions: gio::SimpleActionGroup,
 }
 
 impl App {
@@ -166,7 +167,8 @@ impl App {
         vbox.append(&shared.status);
         window.set_child(Some(&vbox));
 
-        let actions = build_actions(&shared);
+        let actions = gio::SimpleActionGroup::new();
+        build_actions(&shared, &actions);
         window.insert_action_group("app", Some(&actions));
         install_accels(app);
 
@@ -216,7 +218,11 @@ impl App {
             glib::Propagation::Stop
         });
 
-        App { window, shared }
+        App {
+            window,
+            shared,
+            actions,
+        }
     }
 
     /// Put `text` into a fresh first tab (demo content).
@@ -238,6 +244,17 @@ impl App {
 
     pub fn window(&self) -> &gtk4::ApplicationWindow {
         &self.window
+    }
+
+    /// Activate one of the application actions by name.
+    ///
+    /// Returns false when no action with that name exists.
+    pub fn activate(&self, name: &str) -> bool {
+        if !self.actions.list_actions().iter().any(|a| a == name) {
+            return false;
+        }
+        self.actions.activate_action(name, None);
+        true
     }
 }
 
@@ -300,15 +317,14 @@ fn install_accels(app: &gtk4::Application) {
     app.set_accels_for_action("app.redo", &["<Primary>y"]);
     app.set_accels_for_action("app.find", &["<Primary>f"]);
     app.set_accels_for_action("app.goto-line", &["<Primary>g"]);
+    app.set_accels_for_action("app.select-all", &["<Primary>a"]);
     app.set_accels_for_action("app.toggle-theme", &["<Primary>d"]);
     app.set_accels_for_action("app.zoom-in", &["<Primary>plus", "<Primary>equal"]);
     app.set_accels_for_action("app.zoom-out", &["<Primary>minus"]);
 }
 
 /// Build the action group that backs the menu and the shortcuts.
-fn build_actions(shared: &Rc<Shared>) -> gio::SimpleActionGroup {
-    let group = gio::SimpleActionGroup::new();
-
+fn build_actions(shared: &Rc<Shared>, group: &gio::SimpleActionGroup) {
     {
         let shared = shared.clone();
         let action = gio::SimpleAction::new("new", None);
@@ -402,9 +418,13 @@ fn build_actions(shared: &Rc<Shared>) -> gio::SimpleActionGroup {
     }
 
     {
+        let shared = shared.clone();
         let action = gio::SimpleAction::new("select-all", None);
-        action.connect_activate(|_, _| {
-            eprintln!("npad: select all needs a public selection setter on EditorView");
+        action.connect_activate(move |_, _| {
+            if let Some(editor) = shared.tabs.current_editor() {
+                editor.select_all();
+            }
+            shared.update_status();
         });
         group.add_action(&action);
     }
@@ -469,8 +489,6 @@ fn build_actions(shared: &Rc<Shared>) -> gio::SimpleActionGroup {
         group.add_action(&action);
         *shared.language_action.borrow_mut() = Some(action);
     }
-
-    group
 }
 
 /// Open the file chooser and load the picked file into a new tab.
