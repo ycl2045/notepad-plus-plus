@@ -1054,8 +1054,10 @@ fn css_for(mode: ThemeMode, prefs: &Prefs) -> String {
         ThemeMode::Light => ("#ffffff", "#1f1f1f", "#f0f1f3", "#d5d7dd"),
     };
     format!(
-        "window.npad-window {{ background: {bg}; color: {fg}; }}
+        "window.npad-window, windowbackground {{ background: {bg}; color: {fg}; }}
+         box {{ background: {bg}; }}
          headerbar {{ min-height: 34px; background: {panel}; }}
+         menubar {{ background: {panel}; color: {fg}; }}
          notebook header {{ background: {panel}; }}
          .npad-status {{ background: {panel}; color: {fg}; }}
          label {{ font-family: {family}; font-size: {size}pt; color: {fg}; }}

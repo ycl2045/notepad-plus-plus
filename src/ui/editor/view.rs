@@ -32,11 +32,11 @@ use gtk4::{
 
 use crate::ui::editor::buffer::{Document, EditKind};
 use crate::ui::editor::cursor::Selection;
-use crate::ui::editor::highlight::Highlighter;
+use crate::ui::editor::highlight::{Highlighter, Span};
 use crate::ui::editor::rowmap::RowMap;
 use crate::ui::editor::scroll::ScrollState;
 use crate::ui::search::{SearchError, SearchOptions};
-use crate::ui::theme::Theme;
+use crate::ui::theme::{Theme, ThemeMode};
 
 /// Sample used to measure the advance width of one character. The editor
 /// font is monospace, so the width of a run of characters divided by their
@@ -165,7 +165,11 @@ impl EditorView {
     }
 
     pub fn set_theme(&self, theme: Theme) {
-        *self.imp().theme.borrow_mut() = theme;
+        let imp = self.imp();
+        *imp.theme.borrow_mut() = theme;
+        if let Some(highlighter) = imp.highlighter.borrow_mut().as_mut() {
+            highlighter.set_dark(theme.mode() == ThemeMode::Dark);
+        }
         self.queue_draw();
     }
 
@@ -845,13 +849,33 @@ mod imp {
                 let text = doc.line(line);
                 let text = text.trim_end_matches(['\n', '\r']);
                 if !text.is_empty() {
+                    let spans = self.spans_for_line(line, &doc);
                     let layout_cache = self.layout_cache.borrow();
                     if let Some(layout) = layout_cache.as_ref() {
-                        layout.set_text(text);
-                        snapshot.save();
-                        snapshot.translate(&graphene::Point::new(gutter_w + pad, y));
-                        snapshot.append_layout(layout, &theme.fg);
-                        snapshot.restore();
+                        if spans.is_empty() {
+                            layout.set_text(text);
+                            snapshot.save();
+                            snapshot.translate(&graphene::Point::new(gutter_w + pad, y));
+                            snapshot.append_layout(layout, &theme.fg);
+                            snapshot.restore();
+                        } else {
+                            let mut x = gutter_w + pad;
+                            for span in &spans {
+                                let Some(segment) = text.get(span.start..span.end) else {
+                                    continue;
+                                };
+                                if segment.is_empty() {
+                                    continue;
+                                }
+                                let colour = span.color.to_rgba();
+                                layout.set_text(segment);
+                                snapshot.save();
+                                snapshot.translate(&graphene::Point::new(x, y));
+                                snapshot.append_layout(layout, &colour);
+                                snapshot.restore();
+                                x += segment.chars().count() as f32 * char_w;
+                            }
+                        }
                     }
                 }
             }
@@ -868,6 +892,16 @@ mod imp {
     }
 
     impl EditorView {
+        /// The syntax spans of `line`, empty when the language has no
+        /// highlighting.
+        fn spans_for_line(&self, line: usize, doc: &Document) -> Vec<Span> {
+            let mut highlighter = self.highlighter.borrow_mut();
+            match highlighter.as_mut() {
+                Some(highlighter) => highlighter.line_spans(doc, line),
+                None => Vec::new(),
+            }
+        }
+
         /// Scroll the viewport so that the caret line stays visible.
         pub(super) fn ensure_caret_visible(&self) {
             let line = {

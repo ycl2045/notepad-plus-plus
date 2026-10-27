@@ -55,6 +55,8 @@ pub struct Highlighter {
     epoch: u64,
     language: String,
     syntax_index: Option<usize>,
+    /// Whether the dark syntax palette is used.
+    dark: bool,
 }
 
 /// Position of the syntax named `name` inside `ps`, or `None` when the set has
@@ -77,6 +79,15 @@ impl Highlighter {
             epoch: u64::MAX,
             language,
             syntax_index,
+            dark: true,
+        }
+    }
+
+    /// Switch between the dark and the light syntax palette.
+    pub fn set_dark(&mut self, dark: bool) {
+        if self.dark != dark {
+            self.dark = dark;
+            self.clear_cache();
         }
     }
 
@@ -164,7 +175,7 @@ impl Highlighter {
         let text = text.trim_end_matches(['\n', '\r']);
         let syntax = self.syntax_for_text(text);
 
-        let mut h = syntect::easy::HighlightLines::new(syntax, default_theme::get());
+        let mut h = syntect::easy::HighlightLines::new(syntax, syntax_themes::get(self.dark));
         let mut spans: Vec<Span> = Vec::new();
         let mut offset = 0usize;
         for piece in text.split_inclusive('\n') {
@@ -188,16 +199,24 @@ impl Highlighter {
     }
 }
 
-static DEFAULT_THEME: std::sync::OnceLock<syntect::highlighting::Theme> =
-    std::sync::OnceLock::new();
+static DARK_THEME: std::sync::OnceLock<syntect::highlighting::Theme> = std::sync::OnceLock::new();
+static LIGHT_THEME: std::sync::OnceLock<syntect::highlighting::Theme> = std::sync::OnceLock::new();
 
-mod default_theme {
+mod syntax_themes {
     use super::*;
-    pub fn get() -> &'static syntect::highlighting::Theme {
-        DEFAULT_THEME.get_or_init(|| {
+
+    /// The syntax palette for the given mode.
+    pub fn get(dark: bool) -> &'static syntect::highlighting::Theme {
+        let cell = if dark { &DARK_THEME } else { &LIGHT_THEME };
+        cell.get_or_init(|| {
+            let name = if dark {
+                "base16-ocean.dark"
+            } else {
+                "base16-ocean.light"
+            };
             syntect::highlighting::ThemeSet::load_defaults()
                 .themes
-                .get("base16-ocean.dark")
+                .get(name)
                 .cloned()
                 .unwrap_or_else(syntect::highlighting::Theme::default)
         })
