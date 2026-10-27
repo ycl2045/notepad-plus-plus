@@ -29,6 +29,7 @@ Status legend:
 | Encoding & line endings | wired | `src/fs/io.rs`: BOM detection for UTF-8 / UTF-16 LE / UTF-16 BE, strict UTF-8 validation, GBK and Latin-1 fallback, bytes are never silently dropped. Text is `\n`-normalised in memory and the original EOL (`LF` / `CRLF` / `CR`) and BOM are restored on write. **Open...** and **Save As...** use GTK file dialogs, but there is no encoding or EOL chooser yet. |
 | Session restore | wired | `src/ui/session.rs` defines open files, per-tab caret/scroll position, active tab, recent files and window size; `src/ui/prefs.rs` persists theme, font family/size, tab width, wrapping and the "restore session" flag. The session is written when the window closes and read back at startup: every open file is reopened, the caret and the scroll offset of each tab are reapplied, the active tab is selected again, and the window keeps its size. When the restored scroll would leave the caret off screen — a hand-written session, or a file that changed since it was saved — the caret is pulled back into view. Closing a window with unsaved changes asks **Cancel** / **Save** / **Discard** per tab first. |
 | Multiple tabs | wired | `src/ui/notebook.rs` owns a GTK notebook with one buffer and independent path, encoding, EOL, language, undo history and dirty state per tab. Closing a modified tab prompts **Cancel** / **Save** / **Discard**. |
+| Bookmarks | wired | `Ctrl+B` toggles a bookmark on the caret's line; `F2` and `Shift+F2` jump to the next and previous bookmark and wrap at the ends. The gutter paints an amber mark on every bookmarked line, and the set is stored per tab in the session file and restored with it. Bookmarks of untitled tabs live only for the run. |
 
 ---
 
@@ -126,5 +127,7 @@ if those tools are available.
 - The gutter reserves a fixed 8 px per line-number digit, which does not match
   the real font advance, so the numbers can overlap the text in files with more
   than two digits.
+- Bookmarks are line numbers, so they are not remapped when lines are inserted
+  or deleted above them.
 - No `.deb` / Flatpak packaging yet — only the release binary and the desktop
   integration files are provided.
