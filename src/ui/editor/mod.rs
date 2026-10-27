@@ -1,3 +1,4 @@
+pub mod bookmark;
 pub mod buffer;
 pub mod cursor;
 pub mod highlight;

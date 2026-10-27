@@ -26,6 +26,9 @@ pub struct SessionFile {
     pub path: PathBuf,
     pub caret: usize,
     pub scroll: f64,
+    /// 0-based line indices, sorted and de-duplicated.
+    #[serde(default)]
+    pub bookmarks: Vec<usize>,
 }
 
 impl Default for SessionFile {
@@ -34,6 +37,7 @@ impl Default for SessionFile {
             path: PathBuf::new(),
             caret: 0,
             scroll: 0.0,
+            bookmarks: Vec::new(),
         }
     }
 }
@@ -150,6 +154,7 @@ mod tests {
             path: PathBuf::from("/tmp/a.rs"),
             caret: 42,
             scroll: 12.5,
+            bookmarks: vec![0, 4, 9],
         });
         s.active_index = 0;
         s.window = WindowState {
@@ -332,6 +337,7 @@ mod tests {
             path: PathBuf::from("/tmp/a.rs"),
             caret: 7,
             scroll: 3.5,
+            bookmarks: vec![1, 6],
         });
         s.active_index = 0;
         s.recent_files.push(PathBuf::from("/tmp/a.rs"));
@@ -359,5 +365,28 @@ mod tests {
             SessionState::default()
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn session_file_roundtrips_bookmarks() {
+        let file = SessionFile {
+            path: PathBuf::from("/tmp/a.rs"),
+            caret: 3,
+            scroll: 1.5,
+            bookmarks: vec![0, 4, 9],
+        };
+        let raw = serde_json::to_string(&file).unwrap();
+        let back: SessionFile = serde_json::from_str(&raw).unwrap();
+        assert_eq!(back, file);
+        assert_eq!(back.bookmarks, vec![0, 4, 9]);
+    }
+
+    #[test]
+    fn session_file_without_bookmarks_field_defaults_to_empty() {
+        let raw = r#"{"path":"/tmp/a.rs","caret":3,"scroll":1.5}"#;
+        let file: SessionFile = serde_json::from_str(raw).unwrap();
+        assert_eq!(file.bookmarks, Vec::<usize>::new());
+        assert_eq!(file.path, PathBuf::from("/tmp/a.rs"));
+        assert_eq!(file.caret, 3);
     }
 }

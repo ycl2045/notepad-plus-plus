@@ -201,6 +201,7 @@ impl App {
                         if let Some(editor) = tabs.editor_at(page) {
                             editor.set_caret(file.caret);
                             editor.set_scroll_offset(file.scroll);
+                            editor.set_bookmarks(&file.bookmarks);
                         }
                     }
                     Err(err) => {
@@ -309,6 +310,11 @@ fn build_menu() -> gio::Menu {
     search_menu.append(Some("Find..."), Some("app.find"));
     search_menu.append(Some("Go to Line..."), Some("app.goto-line"));
     edit_menu.append_section(None, &search_menu);
+    let bookmark_menu = gio::Menu::new();
+    bookmark_menu.append(Some("Toggle Bookmark"), Some("app.toggle-bookmark"));
+    bookmark_menu.append(Some("Next Bookmark"), Some("app.bookmark-next"));
+    bookmark_menu.append(Some("Previous Bookmark"), Some("app.bookmark-previous"));
+    edit_menu.append_section(None, &bookmark_menu);
     menu.append_submenu(Some("Edit"), &edit_menu);
 
     let view_menu = gio::Menu::new();
@@ -344,6 +350,9 @@ fn install_accels(app: &gtk4::Application) {
     app.set_accels_for_action("app.toggle-theme", &["<Primary>d"]);
     app.set_accels_for_action("app.zoom-in", &["<Primary>plus", "<Primary>equal"]);
     app.set_accels_for_action("app.zoom-out", &["<Primary>minus"]);
+    app.set_accels_for_action("app.toggle-bookmark", &["<Primary>b"]);
+    app.set_accels_for_action("app.bookmark-next", &["F2"]);
+    app.set_accels_for_action("app.bookmark-previous", &["<Shift>F2"]);
 }
 
 /// Build the action group that backs the menu and the shortcuts.
@@ -475,6 +484,42 @@ fn build_actions(shared: &Rc<Shared>, group: &gio::SimpleActionGroup) {
         let shared = shared.clone();
         let action = gio::SimpleAction::new("goto-line", None);
         action.connect_activate(move |_, _| goto_line(&shared));
+        group.add_action(&action);
+    }
+
+    {
+        let shared = shared.clone();
+        let action = gio::SimpleAction::new("toggle-bookmark", None);
+        action.connect_activate(move |_, _| {
+            if let Some(editor) = shared.tabs.current_editor() {
+                editor.toggle_bookmark();
+            }
+            shared.update_status();
+        });
+        group.add_action(&action);
+    }
+
+    {
+        let shared = shared.clone();
+        let action = gio::SimpleAction::new("bookmark-next", None);
+        action.connect_activate(move |_, _| {
+            if let Some(editor) = shared.tabs.current_editor() {
+                editor.jump_to_next_bookmark();
+            }
+            shared.update_status();
+        });
+        group.add_action(&action);
+    }
+
+    {
+        let shared = shared.clone();
+        let action = gio::SimpleAction::new("bookmark-previous", None);
+        action.connect_activate(move |_, _| {
+            if let Some(editor) = shared.tabs.current_editor() {
+                editor.jump_to_previous_bookmark();
+            }
+            shared.update_status();
+        });
         group.add_action(&action);
     }
 

@@ -197,6 +197,7 @@ impl TabManager {
                 path,
                 caret: tab.editor.caret(),
                 scroll: tab.editor.scroll_offset(),
+                bookmarks: tab.editor.bookmarks(),
             });
         }
         let active = active.unwrap_or_else(|| files.len().saturating_sub(1));

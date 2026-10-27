@@ -30,6 +30,7 @@ use gtk4::{
     Accessible, Buildable, ConstraintTarget, Snapshot, graphene, pango, subclass::prelude::*,
 };
 
+use crate::ui::editor::bookmark::{self, BookmarkSet};
 use crate::ui::editor::buffer::{Document, EditKind};
 use crate::ui::editor::cursor::Selection;
 use crate::ui::editor::highlight::{Highlighter, Span};
@@ -42,6 +43,9 @@ use crate::ui::theme::{Theme, ThemeMode};
 /// font is monospace, so the width of a run of characters divided by their
 /// count is the advance of a single one.
 const CHAR_WIDTH_SAMPLE: &str = "MMMMMMMMMM";
+
+const BOOKMARK_X: f32 = 3.0;
+const BOOKMARK_W: f32 = 4.0;
 
 glib::wrapper! {
     pub struct EditorView(ObjectSubclass<imp::EditorView>)
@@ -343,7 +347,76 @@ impl EditorView {
         self.queue_draw();
     }
 
+    /// Toggle the bookmark on the caret's line.
+    ///
+    /// Returns whether the line is bookmarked afterwards. The caret stays
+    /// where it is and the viewport does not move.
+    pub fn toggle_bookmark(&self) -> bool {
+        let imp = self.imp();
+        let line = self.caret_line_index();
+        let added = bookmark::toggle(&mut imp.bookmarks.borrow_mut(), line);
+        self.queue_draw();
+        added
+    }
+
+    /// The bookmarked lines, sorted and without the lines the document does
+    /// not have any more.
+    pub fn bookmarks(&self) -> Vec<usize> {
+        let imp = self.imp();
+        let line_count = imp.doc.borrow().line_count();
+        imp.bookmarks
+            .borrow()
+            .iter()
+            .copied()
+            .filter(|&line| line < line_count)
+            .collect()
+    }
+
+    /// Replace the bookmarks with the valid part of `lines`.
+    pub fn set_bookmarks(&self, lines: &[usize]) {
+        let imp = self.imp();
+        let line_count = imp.doc.borrow().line_count();
+        *imp.bookmarks.borrow_mut() = bookmark::sanitise(lines, line_count);
+        self.queue_draw();
+    }
+
+    /// The next bookmark line after the caret's line. The caret does not move.
+    pub fn next_bookmark_line(&self) -> Option<usize> {
+        let imp = self.imp();
+        let line_count = imp.doc.borrow().line_count();
+        bookmark::next(&imp.bookmarks.borrow(), self.caret_line_index(), line_count)
+    }
+
+    /// The previous bookmark line before the caret's line. The caret does not
+    /// move.
+    pub fn previous_bookmark_line(&self) -> Option<usize> {
+        let imp = self.imp();
+        let line_count = imp.doc.borrow().line_count();
+        bookmark::previous(&imp.bookmarks.borrow(), self.caret_line_index(), line_count)
+    }
+
+    /// Jump to the next bookmark line and return it.
+    pub fn jump_to_next_bookmark(&self) -> Option<usize> {
+        let target = self.next_bookmark_line()?;
+        self.goto_line(target + 1);
+        Some(target)
+    }
+
+    /// Jump to the previous bookmark line and return it.
+    pub fn jump_to_previous_bookmark(&self) -> Option<usize> {
+        let target = self.previous_bookmark_line()?;
+        self.goto_line(target + 1);
+        Some(target)
+    }
+
     // --- private helpers ----------------------------------------------------
+
+    /// The 0-based line the caret is on.
+    fn caret_line_index(&self) -> usize {
+        let imp = self.imp();
+        let doc = imp.doc.borrow();
+        doc.byte_to_line(imp.selection.borrow().head)
+    }
 
     /// Text the IM context committed. The IME owns the caret placement, so the
     /// committed string goes in at the caret like any other insertion.
@@ -691,6 +764,8 @@ mod imp {
         pub pending_scroll: std::cell::Cell<Option<f64>>,
         /// True once `snapshot` has measured the real row height.
         pub row_h_ready: std::cell::Cell<bool>,
+        /// The bookmarked lines of this tab.
+        pub bookmarks: RefCell<BookmarkSet>,
     }
 
     #[glib::object_subclass]
@@ -808,6 +883,8 @@ mod imp {
 
             let (sel_start, sel_end) = sel.range();
 
+            let bookmarks = self.bookmarks.borrow();
+
             for row in first..(first + visible).min(total_rows) {
                 let line = rowmap.row_to_line(row);
                 let row_h_f = row_h as f32;
@@ -817,6 +894,13 @@ mod imp {
                     snapshot.append_color(
                         &theme.current_line,
                         &graphene::Rect::new(gutter_w, y - 4.0, width - gutter_w, row_h_f),
+                    );
+                }
+
+                if bookmarks.contains(&line) {
+                    snapshot.append_color(
+                        &theme.bookmark,
+                        &graphene::Rect::new(BOOKMARK_X, y + 2.0, BOOKMARK_W, row_h_f - 4.0),
                     );
                 }
 
