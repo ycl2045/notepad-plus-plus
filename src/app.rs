@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
+use crate::ui::findbar::{FindBar, FindState};
 use crate::ui::notebook::{CloseDecision, TabManager};
 use crate::ui::prefs::Prefs;
 use crate::ui::session::{SessionState, WindowState};
@@ -34,6 +35,8 @@ struct Shared {
     /// True while a close sequence is in flight, so a second close request
     /// does not start a second sequence.
     closing: Cell<bool>,
+    /// The find and replace bar. It is hidden until a search is started.
+    findbar: FindBar,
 }
 
 impl Shared {
@@ -152,6 +155,7 @@ impl App {
             language_action: RefCell::new(None),
             session: RefCell::new(session),
             closing: Cell::new(false),
+            findbar: FindBar::new(),
         });
 
         let menu = build_menu();
@@ -164,8 +168,11 @@ impl App {
         let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
         vbox.append(&menu_bar);
         vbox.append(&notebook);
+        vbox.append(&shared.findbar.widget);
         vbox.append(&shared.status);
         window.set_child(Some(&vbox));
+
+        wire_find_bar(&shared);
 
         let actions = gio::SimpleActionGroup::new();
         build_actions(&shared, &actions);
@@ -255,6 +262,22 @@ impl App {
         }
         self.actions.activate_action(name, None);
         true
+    }
+
+    /// Search for `pattern` in the visible tab and select the first match.
+    ///
+    /// The find bar is filled with the pattern and shown.
+    pub fn search(&self, pattern: &str) {
+        self.shared.findbar.prefill(pattern);
+        self.shared.findbar.reveal();
+        find_next(&self.shared, &self.shared.findbar.state());
+    }
+
+    /// Replace every match of the pattern in the find bar with `replacement`.
+    pub fn replace_all(&self, replacement: &str) {
+        let state = self.shared.findbar.state();
+        state.replacement.set_text(replacement);
+        replace_all_matches(&self.shared, &state);
     }
 }
 
@@ -430,18 +453,28 @@ fn build_actions(shared: &Rc<Shared>, group: &gio::SimpleActionGroup) {
     }
 
     {
+        let shared = shared.clone();
         let action = gio::SimpleAction::new("find", None);
-        action.connect_activate(|_, _| {
-            eprintln!("npad: the find/replace panel is not part of this milestone");
+        action.connect_activate(move |_, _| {
+            if let Some(editor) = shared.tabs.current_editor() {
+                let selection = editor.selection();
+                if !selection.is_empty() {
+                    let text = editor.doc_text();
+                    let (start, end) = selection.range();
+                    if let Some(selected) = text.get(start..end) {
+                        shared.findbar.prefill(selected);
+                    }
+                }
+            }
+            shared.findbar.reveal();
         });
         group.add_action(&action);
     }
 
     {
+        let shared = shared.clone();
         let action = gio::SimpleAction::new("goto-line", None);
-        action.connect_activate(|_, _| {
-            eprintln!("npad: go to line needs a public caret setter on EditorView");
-        });
+        action.connect_activate(move |_, _| goto_line(&shared));
         group.add_action(&action);
     }
 
@@ -515,6 +548,221 @@ fn open_file(shared: &Rc<Shared>) {
         }
         shared.update_status();
     });
+}
+
+/// Ask for a line number and move the caret there.
+fn goto_line(shared: &Rc<Shared>) {
+    let Some(editor) = shared.tabs.current_editor() else {
+        return;
+    };
+    let lines = editor.line_count();
+    let dialog = gtk4::Window::builder()
+        .title("Go to Line")
+        .transient_for(&shared.window)
+        .modal(true)
+        .resizable(false)
+        .default_width(340)
+        .build();
+
+    let entry = gtk4::Entry::new();
+    entry.set_text(&editor.caret_line().to_string());
+    entry.set_activates_default(true);
+    entry.set_placeholder_text(Some("Line number"));
+
+    let label = gtk4::Label::new(Some(&format!("Line number (1-{lines}):")));
+    label.set_xalign(0.0);
+
+    let cancel = gtk4::Button::with_label("Cancel");
+    let go = gtk4::Button::with_label("Go");
+
+    let buttons = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
+    buttons.set_halign(gtk4::Align::End);
+    buttons.append(&cancel);
+    buttons.append(&go);
+
+    let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+    vbox.set_margin_top(12);
+    vbox.set_margin_bottom(12);
+    vbox.set_margin_start(12);
+    vbox.set_margin_end(12);
+    vbox.append(&label);
+    vbox.append(&entry);
+    vbox.append(&buttons);
+    dialog.set_child(Some(&vbox));
+    dialog.set_default_widget(Some(&go));
+
+    let dialog_ref = dialog.clone();
+    cancel.connect_clicked(move |_| dialog_ref.close());
+
+    let dialog_ref = dialog.clone();
+    let entry_ref = entry.clone();
+    let shared = shared.clone();
+    go.connect_clicked(move |_| {
+        let text = entry_ref.text();
+        if let Ok(line) = text.trim().parse::<usize>() {
+            editor.goto_line(line);
+            shared.update_status();
+        }
+        dialog_ref.close();
+    });
+
+    dialog.present();
+}
+
+/// Connect the buttons of the find bar.
+///
+/// The handlers hold a weak reference to the shared state, so the bar never
+/// keeps the state it belongs to alive.
+fn wire_find_bar(shared: &Rc<Shared>) {
+    let state = shared.findbar.state();
+
+    {
+        let weak = Rc::downgrade(shared);
+        let state = state.clone();
+        shared.findbar.find_next.connect_clicked(move |_| {
+            if let Some(shared) = weak.upgrade() {
+                find_next(&shared, &state);
+            }
+        });
+    }
+    {
+        let weak = Rc::downgrade(shared);
+        let state = state.clone();
+        shared.findbar.find_previous.connect_clicked(move |_| {
+            if let Some(shared) = weak.upgrade() {
+                find_previous(&shared, &state);
+            }
+        });
+    }
+    {
+        let weak = Rc::downgrade(shared);
+        let state = state.clone();
+        shared.findbar.replace.connect_clicked(move |_| {
+            if let Some(shared) = weak.upgrade() {
+                replace_match(&shared, &state);
+            }
+        });
+    }
+    {
+        let weak = Rc::downgrade(shared);
+        let state = state.clone();
+        shared.findbar.replace_all.connect_clicked(move |_| {
+            if let Some(shared) = weak.upgrade() {
+                replace_all_matches(&shared, &state);
+            }
+        });
+    }
+    {
+        let weak = Rc::downgrade(shared);
+        shared.findbar.close.connect_clicked(move |_| {
+            if let Some(shared) = weak.upgrade() {
+                shared.findbar.conceal();
+            }
+        });
+    }
+}
+
+/// Select the next match of the pattern.
+fn find_next(shared: &Rc<Shared>, state: &FindState) {
+    let Some(editor) = shared.tabs.current_editor() else {
+        return;
+    };
+    let pattern = state.pattern_text();
+    if pattern.is_empty() {
+        return;
+    }
+    let options = state.options();
+    let selection = editor.selection();
+    // A non-empty selection is the match that was found last, so the search
+    // continues after it instead of finding it again.
+    let from = if selection.is_empty() {
+        selection.head
+    } else {
+        selection.range().1
+    };
+    match editor.find_next(&pattern, &options, from) {
+        Ok(Some((start, end))) => {
+            editor.select_range(start, end);
+            shared.findbar.set_message("");
+            shared.update_status();
+        }
+        Ok(None) => shared.findbar.set_message("No more matches"),
+        Err(err) => shared.findbar.set_message(&format!("{err}")),
+    }
+}
+
+/// Select the previous match of the pattern.
+fn find_previous(shared: &Rc<Shared>, state: &FindState) {
+    let Some(editor) = shared.tabs.current_editor() else {
+        return;
+    };
+    let pattern = state.pattern_text();
+    if pattern.is_empty() {
+        return;
+    }
+    let options = state.options();
+    let selection = editor.selection();
+    let from = if selection.is_empty() {
+        selection.head
+    } else {
+        selection.range().0
+    };
+    match editor.find_previous(&pattern, &options, from) {
+        Ok(Some((start, end))) => {
+            editor.select_range(start, end);
+            shared.findbar.set_message("");
+            shared.update_status();
+        }
+        Ok(None) => shared.findbar.set_message("No earlier matches"),
+        Err(err) => shared.findbar.set_message(&format!("{err}")),
+    }
+}
+
+/// Replace the match under the caret and move on to the next one.
+fn replace_match(shared: &Rc<Shared>, state: &FindState) {
+    let Some(editor) = shared.tabs.current_editor() else {
+        return;
+    };
+    let pattern = state.pattern_text();
+    if pattern.is_empty() {
+        return;
+    }
+    let options = state.options();
+    let replacement = state.replacement_text();
+    let selection = editor.selection();
+    let (start, end) = selection.range();
+    if !selection.is_empty()
+        && let Ok(Some(m)) = editor.find_next(&pattern, &options, start)
+        && m == (start, end)
+    {
+        editor.replace_range(start, end, &replacement);
+        editor.select_range(start, start + replacement.len());
+    }
+    find_next(shared, state);
+}
+
+/// Replace every match of the pattern.
+fn replace_all_matches(shared: &Rc<Shared>, state: &FindState) {
+    let Some(editor) = shared.tabs.current_editor() else {
+        return;
+    };
+    let pattern = state.pattern_text();
+    if pattern.is_empty() {
+        return;
+    }
+    let options = state.options();
+    let replacement = state.replacement_text();
+    match editor.replace_all(&pattern, &replacement, &options) {
+        Ok(count) => {
+            // The selection still points at the old matches, which are gone.
+            editor.set_caret(editor.caret());
+            shared
+                .findbar
+                .set_message(&format!("Replaced {count} occurrence(s)"));
+            shared.update_status();
+        }
+        Err(err) => shared.findbar.set_message(&format!("{err}")),
+    }
 }
 
 /// Save the visible tab; `force_dialog` always asks for a file name.
@@ -801,16 +1049,18 @@ fn start_poll(shared: Rc<Shared>) {
 
 /// CSS for the window chrome; the editor paints itself.
 fn css_for(mode: ThemeMode, prefs: &Prefs) -> String {
-    let (bg, fg, panel) = match mode {
-        ThemeMode::Dark => ("#1c1f24", "#d8dbe0", "#292b33"),
-        ThemeMode::Light => ("#ffffff", "#1f1f1f", "#f0f1f3"),
+    let (bg, fg, panel, border) = match mode {
+        ThemeMode::Dark => ("#1c1f24", "#d8dbe0", "#292b33", "#3c3f4a"),
+        ThemeMode::Light => ("#ffffff", "#1f1f1f", "#f0f1f3", "#d5d7dd"),
     };
     format!(
         "window.npad-window {{ background: {bg}; color: {fg}; }}
          headerbar {{ min-height: 34px; background: {panel}; }}
          notebook header {{ background: {panel}; }}
          .npad-status {{ background: {panel}; color: {fg}; }}
-         label {{ font-family: {family}; font-size: {size}pt; color: {fg}; }}",
+         label {{ font-family: {family}; font-size: {size}pt; color: {fg}; }}
+         button {{ background-image: none; background-color: {panel}; color: {fg}; border: 1px solid {border}; }}
+         entry {{ background-image: none; background-color: {panel}; color: {fg}; }}",
         family = sanitise_family(&prefs.font_family),
         size = prefs.font_size,
     )

@@ -35,6 +35,7 @@ use crate::ui::editor::cursor::Selection;
 use crate::ui::editor::highlight::Highlighter;
 use crate::ui::editor::rowmap::RowMap;
 use crate::ui::editor::scroll::ScrollState;
+use crate::ui::search::{SearchError, SearchOptions};
 use crate::ui::theme::Theme;
 
 /// Sample used to measure the advance width of one character. The editor
@@ -212,6 +213,101 @@ impl EditorView {
         *imp.selection.borrow_mut() = sel;
         imp.sticky_col.set(None);
         self.queue_draw();
+    }
+
+    /// Select the byte range `[start, end)`.
+    pub fn select_range(&self, start: usize, end: usize) {
+        let imp = self.imp();
+        let len = imp.doc.borrow().len_bytes();
+        let start = start.min(len);
+        let end = end.min(len).max(start);
+        let mut sel = *imp.selection.borrow();
+        sel.anchor = start;
+        sel.head = end;
+        *imp.selection.borrow_mut() = sel;
+        imp.sticky_col.set(None);
+        imp.ensure_caret_visible();
+        self.queue_draw();
+    }
+
+    /// Number of lines in the document.
+    pub fn line_count(&self) -> usize {
+        self.imp().doc.borrow().line_count()
+    }
+
+    /// The 1-based line the caret is on.
+    pub fn caret_line(&self) -> usize {
+        let imp = self.imp();
+        let doc = imp.doc.borrow();
+        let sel = *imp.selection.borrow();
+        doc.byte_to_line(sel.head) + 1
+    }
+
+    /// Replace the byte range `[start, end)` with `text`.
+    pub fn replace_range(&self, start: usize, end: usize, text: &str) {
+        let imp = self.imp();
+        let len = imp.doc.borrow().len_bytes();
+        let start = start.min(len);
+        let end = end.min(len).max(start);
+        imp.doc
+            .borrow_mut()
+            .replace(start, end - start, text, EditKind::Structural);
+        imp.sticky_col.set(None);
+        self.queue_draw();
+    }
+
+    /// Move the caret to the start of the 1-based `line`.
+    ///
+    /// A line past the end of the document moves the caret to its last line.
+    pub fn goto_line(&self, line: usize) {
+        let offset = {
+            let doc = self.imp().doc.borrow();
+            let line = line
+                .saturating_sub(1)
+                .min(doc.line_count().saturating_sub(1));
+            doc.line_to_byte(line)
+        };
+        self.set_caret(offset);
+    }
+
+    /// Find the next match of `pattern` at or after `from`.
+    pub fn find_next(
+        &self,
+        pattern: &str,
+        options: &SearchOptions,
+        from: usize,
+    ) -> Result<Option<(usize, usize)>, SearchError> {
+        let doc = self.imp().doc.borrow();
+        Ok(crate::ui::search::find_next(&doc, pattern, options, from)?.map(|m| (m.start, m.end)))
+    }
+
+    /// Find the last match of `pattern` that starts before `from`.
+    pub fn find_previous(
+        &self,
+        pattern: &str,
+        options: &SearchOptions,
+        from: usize,
+    ) -> Result<Option<(usize, usize)>, SearchError> {
+        let doc = self.imp().doc.borrow();
+        Ok(
+            crate::ui::search::find_previous(&doc, pattern, options, from)?
+                .map(|m| (m.start, m.end)),
+        )
+    }
+
+    /// Replace every match of `pattern` and return how many were replaced.
+    pub fn replace_all(
+        &self,
+        pattern: &str,
+        replacement: &str,
+        options: &SearchOptions,
+    ) -> Result<usize, SearchError> {
+        let count = {
+            let mut doc = self.imp().doc.borrow_mut();
+            crate::ui::search::replace_all(&mut doc, pattern, replacement, options)?
+        };
+        self.queue_draw();
+        Ok(count)
     }
 
     /// Current vertical scroll offset in pixels.

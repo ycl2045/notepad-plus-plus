@@ -216,9 +216,39 @@ pub fn find_next(
     }
 }
 
-/// Replaces every occurrence of `pattern` with `replace` and returns the
-/// number of replacements.
+/// The last match that starts before `from_byte`.
 ///
+/// With `wrap` enabled the search continues at the end of the document when
+/// no match starts before `from_byte`.
+pub fn find_previous(
+    doc: &Document,
+    pattern: &str,
+    options: &SearchOptions,
+    from_byte: usize,
+) -> Result<Option<Match>, SearchError> {
+    if pattern.is_empty() {
+        return Ok(None);
+    }
+    let matcher = build_matcher(pattern, options)?;
+    let text = doc.text();
+    let from = from_byte.min(text.len());
+
+    let mut last_before = None;
+    let mut last_any = None;
+    for m in matcher.find_iter(&text) {
+        last_any = Some(m);
+        if m.start < from {
+            last_before = Some(m);
+        }
+    }
+    if last_before.is_some() {
+        return Ok(last_before);
+    }
+    if options.wrap { Ok(last_any) } else { Ok(None) }
+}
+
+/// Replaces every occurrence of `pattern` with `replace` and returns the
+/// number of replacements.///
 /// The replacements are applied **back to front** (highest offset first) so
 /// that the byte offsets of the not yet applied matches stay valid. Every
 /// replacement is applied through [`Document::replace`], so the undo stack
@@ -297,6 +327,36 @@ mod tests {
         let found = find_all(&d, "world", &literal(true, false), 0).unwrap();
         assert_eq!(found, vec![Match { start: 6, end: 11 }]);
         assert_eq!(d.slice(found[0].start, found[0].end), "world");
+    }
+
+    #[test]
+    fn find_previous_returns_the_last_match_before_the_offset() {
+        let d = doc("ab ab ab");
+        let found = find_previous(&d, "ab", &literal(true, false), 5).unwrap();
+        assert_eq!(found, Some(Match { start: 3, end: 5 }));
+    }
+
+    #[test]
+    fn find_previous_wraps_to_the_last_match_of_the_document() {
+        let d = doc("ab ab ab");
+        let found = find_previous(&d, "ab", &literal(true, true), 0).unwrap();
+        assert_eq!(found, Some(Match { start: 6, end: 8 }));
+    }
+
+    #[test]
+    fn find_previous_without_wrap_stops_at_the_start_of_the_document() {
+        let d = doc("ab ab ab");
+        let found = find_previous(&d, "ab", &literal(true, false), 0).unwrap();
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn find_previous_finds_nothing_for_an_empty_pattern() {
+        let d = doc("hello");
+        assert_eq!(
+            find_previous(&d, "", &literal(true, true), 0).unwrap(),
+            None
+        );
     }
 
     #[test]
