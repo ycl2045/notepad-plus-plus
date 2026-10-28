@@ -44,6 +44,12 @@ use crate::ui::theme::{Theme, ThemeMode};
 /// count is the advance of a single one.
 const CHAR_WIDTH_SAMPLE: &str = "MMMMMMMMMM";
 
+/// Sample used to measure the advance width of one digit.
+const DIGIT_WIDTH_SAMPLE: &str = "0000000000";
+
+/// Padding on each side of the line-number gutter, in pixels.
+const GUTTER_PAD: i32 = 8;
+
 const BOOKMARK_X: f32 = 3.0;
 const BOOKMARK_W: f32 = 4.0;
 
@@ -766,6 +772,8 @@ mod imp {
         pub row_h_ready: std::cell::Cell<bool>,
         /// The bookmarked lines of this tab.
         pub bookmarks: RefCell<BookmarkSet>,
+        /// Measured advance width of one digit, in pixels.
+        pub digit_w: std::cell::Cell<f32>,
     }
 
     #[glib::object_subclass]
@@ -837,6 +845,7 @@ mod imp {
             // otherwise the scroll range is computed from the placeholder
             // height and a restored scroll offset lands on the wrong row.
             let mut char_w = 8.0f32;
+            let mut digit_w = 0.0f32;
             if let Some(layout) = self.layout_cache.borrow().as_ref() {
                 layout.set_text("Ag");
                 let (_mw, mh) = layout.pixel_size();
@@ -847,7 +856,21 @@ mod imp {
                 if sw > 0 && count > 0.0 {
                     char_w = sw as f32 / count;
                 }
+                layout.set_text(DIGIT_WIDTH_SAMPLE);
+                let (dw, _dh) = layout.pixel_size();
+                let digits = DIGIT_WIDTH_SAMPLE.chars().count() as f32;
+                if dw > 0 && digits > 0.0 {
+                    digit_w = dw as f32 / digits;
+                }
             }
+            if digit_w <= 0.0 {
+                digit_w = char_w;
+            }
+            if digit_w <= 0.0 {
+                digit_w = 8.0;
+            }
+            self.digit_w.set(digit_w);
+            let digit_w = self.digit_w.get();
             let row_h = scroll.row_h;
             scroll.viewport_h = scroll.viewport_h.max(height as i32);
             scroll.content_h = (total_rows as i32) * row_h;
@@ -872,8 +895,8 @@ mod imp {
             let first = scroll.first_row();
             let visible = scroll.visible_row_count();
 
-            let gutter_w = RowMap::gutter_width(total_rows, 8, 8) as f32;
-            let pad = 8.0f32;
+            let gutter_w = RowMap::gutter_width(doc.line_count(), digit_w, GUTTER_PAD) as f32;
+            let pad = GUTTER_PAD as f32;
 
             snapshot.append_color(&theme.bg, &graphene::Rect::new(0.0, 0.0, width, height));
             snapshot.append_color(
@@ -924,8 +947,10 @@ mod imp {
                 let num = format!("{}", line + 1);
                 if let Some(layout) = self.layout_cache.borrow().as_ref() {
                     layout.set_text(&num);
+                    let (num_w, _) = layout.pixel_size();
+                    let x = RowMap::number_x(gutter_w, GUTTER_PAD, num_w as f32);
                     snapshot.save();
-                    snapshot.translate(&graphene::Point::new(gutter_w - 16.0, y));
+                    snapshot.translate(&graphene::Point::new(x, y));
                     snapshot.append_layout(layout, &theme.gutter_fg);
                     snapshot.restore();
                 }

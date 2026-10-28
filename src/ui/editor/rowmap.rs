@@ -91,10 +91,32 @@ impl RowMap {
 
     /// Pixel width needed by the gutter for `line_count` lines at `digit_px` px
     /// per digit, with `pad` px padding on each side.
-    pub fn gutter_width(line_count: usize, digit_px: i32, pad: i32) -> i32 {
-        let digits = line_count.max(1).to_string().len() as i32;
-        digits * digit_px + pad * 2
+    pub fn gutter_width(line_count: usize, digit_px: f32, pad: i32) -> i32 {
+        self::gutter_width(line_count, digit_px, pad)
     }
+
+    /// Left x of a line number that is right-aligned inside the gutter.
+    pub fn number_x(gutter_w: f32, pad: i32, number_w: f32) -> f32 {
+        self::number_x(gutter_w, pad, number_w)
+    }
+}
+
+/// Pixel width of the line-number gutter for `line_count` lines.
+///
+/// The width follows the number of digits the largest line number needs; the
+/// fraction `digits * digit_px` is rounded up, so the gutter is never
+/// narrower than the numbers it has to hold.
+pub fn gutter_width(line_count: usize, digit_px: f32, pad: i32) -> i32 {
+    let digits = line_count.max(1).to_string().len() as f32;
+    (digits * digit_px).ceil() as i32 + pad * 2
+}
+
+/// Left x of a line number that is right-aligned inside the gutter.
+///
+/// `number_w` is the measured width of the rendered number; the number ends
+/// `pad` pixels before the text area.
+pub fn number_x(gutter_w: f32, pad: i32, number_w: f32) -> f32 {
+    gutter_w - pad as f32 - number_w
 }
 
 impl Default for RowMap {
@@ -139,8 +161,35 @@ mod tests {
 
     #[test]
     fn gutter_width_scales_with_digits() {
-        assert_eq!(RowMap::gutter_width(9, 8, 8), 24);
-        assert_eq!(RowMap::gutter_width(1000, 8, 8), 48);
+        assert_eq!(RowMap::gutter_width(9, 8.0, 8), 24);
+        assert_eq!(RowMap::gutter_width(1000, 8.0, 8), 48);
+    }
+
+    #[test]
+    fn gutter_width_rounds_up_the_measured_digit_advance() {
+        assert_eq!(RowMap::gutter_width(999, 9.6, 8), 45);
+        assert_eq!(RowMap::gutter_width(1000, 9.6, 8), 55);
+    }
+
+    #[test]
+    fn gutter_width_uses_at_least_one_digit() {
+        assert_eq!(RowMap::gutter_width(0, 9.6, 8), 26);
+    }
+
+    #[test]
+    fn number_x_right_aligns_inside_the_gutter() {
+        let x = RowMap::number_x(45.0, 8, 28.8);
+        assert!((x - 8.2).abs() < 1e-4, "expected 8.2, got {x}");
+        assert!(
+            (x + 28.8 - 37.0).abs() < 1e-4,
+            "the number must end at gutter_w - pad"
+        );
+
+        // A one-digit number in the narrowest gutter still leaves the 8px
+        // bookmark lane free: the marker bar ends at x = 7.0.
+        let narrow = RowMap::gutter_width(9, 9.6, 8) as f32;
+        let one = RowMap::number_x(narrow, 8, 9.6);
+        assert!(one >= 8.0, "expected >= 8.0, got {one}");
     }
 
     #[test]
