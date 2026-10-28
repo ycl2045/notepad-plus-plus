@@ -35,6 +35,7 @@ fn main() {
         }
         let shot = std::env::var("NPAD_SHOT").ok();
         let action = std::env::var("NPAD_ACTION").ok();
+        let action_target = std::env::var("NPAD_ACTION_TARGET").ok();
         let find = std::env::var("NPAD_FIND").ok();
         let replace = std::env::var("NPAD_REPLACE").ok();
         let autoclose = std::env::var_os("NPAD_AUTOCLOSE").is_some();
@@ -43,7 +44,7 @@ fn main() {
             let action_state = state.clone();
             glib::timeout_add_local_once(HOOK_ACTION_DELAY, move || {
                 if let Some(name) = action {
-                    action_state.activate(&name);
+                    action_state.activate_with(&name, action_target.as_deref());
                 }
                 if let Some(pattern) = find {
                     action_state.search(&pattern);

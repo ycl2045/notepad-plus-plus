@@ -14,6 +14,7 @@ use std::time::Duration;
 use crate::ui::findbar::{FindBar, FindState};
 use crate::ui::notebook::{CloseDecision, TabManager};
 use crate::ui::prefs::Prefs;
+use crate::ui::recent;
 use crate::ui::session::{SessionState, WindowState};
 use crate::ui::theme::{Theme, ThemeMode};
 
@@ -32,6 +33,9 @@ struct Shared {
     language_action: RefCell<Option<gio::SimpleAction>>,
     /// The session: the recent-files list and, after a close, the open files.
     session: RefCell<SessionState>,
+    /// The live model of the `File > Recent files` submenu. It is rebuilt in
+    /// place, so the menu bar follows the list.
+    recent_menu: gio::Menu,
     /// True while a close sequence is in flight, so a second close request
     /// does not start a second sequence.
     closing: Cell<bool>,
@@ -97,6 +101,31 @@ impl Shared {
             self.status.set_text(&text);
         }
     }
+
+    /// Rebuild the rows of the `File > Recent files` submenu.
+    ///
+    /// Paths that are not files are dropped from the list as well, so a file
+    /// that disappeared does not come back on the next start.
+    fn refresh_recent_menu(&self) {
+        let entries = {
+            let session = self.session.borrow();
+            recent::menu_entries(&session.recent_files)
+        };
+        self.session.borrow_mut().recent_files =
+            entries.iter().map(|entry| entry.path.clone()).collect();
+        self.recent_menu.remove_all();
+        if entries.is_empty() {
+            let item = gio::MenuItem::new(Some(recent::EMPTY_LABEL), Some("app.recent-empty"));
+            self.recent_menu.append_item(&item);
+            return;
+        }
+        for entry in entries {
+            let item = gio::MenuItem::new(Some(&entry.label), None);
+            let target = glib::Variant::from(entry.path.to_string_lossy().as_ref());
+            item.set_action_and_target_value(Some("app.open-recent"), Some(&target));
+            self.recent_menu.append_item(&item);
+        }
+    }
 }
 
 pub struct App {
@@ -145,6 +174,10 @@ impl App {
         status.set_margin_end(12);
         status.add_css_class("npad-status");
 
+        // The recent-files submenu is a live model: its rows are rebuilt in
+        // place, so the menu bar and the session always agree.
+        let recent_menu = gio::Menu::new();
+
         let shared = Rc::new(Shared {
             window: window.clone(),
             tabs: tabs.clone(),
@@ -154,11 +187,12 @@ impl App {
             css,
             language_action: RefCell::new(None),
             session: RefCell::new(session),
+            recent_menu: recent_menu.clone(),
             closing: Cell::new(false),
             findbar: FindBar::new(),
         });
 
-        let menu = build_menu();
+        let menu = build_menu(&recent_menu);
         let menu_bar = gtk4::PopoverMenuBar::from_model(Some(&menu));
 
         let notebook = tabs.notebook();
@@ -178,6 +212,7 @@ impl App {
         build_actions(&shared, &actions);
         window.insert_action_group("app", Some(&actions));
         install_accels(app);
+        shared.refresh_recent_menu();
 
         let switch_shared = shared.clone();
         notebook.connect_switch_page(move |_, _, _| {
@@ -258,10 +293,19 @@ impl App {
     ///
     /// Returns false when no action with that name exists.
     pub fn activate(&self, name: &str) -> bool {
+        self.activate_with(name, None)
+    }
+
+    /// Activate an action with a string parameter.
+    ///
+    /// The parameter is what the rows of the recent-files submenu carry: the
+    /// path of the file they open.
+    pub fn activate_with(&self, name: &str, target: Option<&str>) -> bool {
         if !self.actions.list_actions().iter().any(|a| a == name) {
             return false;
         }
-        self.actions.activate_action(name, None);
+        let parameter = target.map(glib::Variant::from);
+        self.actions.activate_action(name, parameter.as_ref());
         true
     }
 
@@ -283,12 +327,20 @@ impl App {
 }
 
 /// Build the menu model: File / Edit / View / Language.
-fn build_menu() -> gio::Menu {
+///
+/// `recent` is the live model of the `File > Recent files` submenu; the menu
+/// keeps a reference to it, so its rows can be rebuilt later.
+fn build_menu(recent: &gio::Menu) -> gio::Menu {
     let menu = gio::Menu::new();
 
     let file_menu = gio::Menu::new();
     file_menu.append(Some("New"), Some("app.new"));
     file_menu.append(Some("Open..."), Some("app.open"));
+    let recent_item = gio::MenuItem::new_submenu(Some("Recent files"), recent);
+    // GTK tracks the open state of the submenu in this action: that is when
+    // the rows have to be rebuilt.
+    recent_item.set_attribute_value("submenu-action", Some(&"app.recent-open".to_variant()));
+    file_menu.append_item(&recent_item);
     file_menu.append(Some("Save"), Some("app.save"));
     file_menu.append(Some("Save As..."), Some("app.save-as"));
     file_menu.append(Some("Close Tab"), Some("app.close-tab"));
@@ -371,6 +423,72 @@ fn build_actions(shared: &Rc<Shared>, group: &gio::SimpleActionGroup) {
         let shared = shared.clone();
         let action = gio::SimpleAction::new("open", None);
         action.connect_activate(move |_, _| open_file(&shared));
+        group.add_action(&action);
+    }
+
+    {
+        let shared = shared.clone();
+        let action = gio::SimpleAction::new_stateful(
+            "open-recent",
+            Some(glib::VariantTy::STRING),
+            &glib::Variant::from(""),
+        );
+        action.connect_activate(move |_, parameter| {
+            let Some(path) = parameter.and_then(|value| value.get::<String>()) else {
+                return;
+            };
+            if path.is_empty() {
+                return;
+            }
+            let path = PathBuf::from(path);
+            match shared.tabs.open_path(&path) {
+                Ok(_) => {
+                    shared.session.borrow_mut().touch_recent(&path);
+                    let session = build_session(&shared);
+                    let _ = session.save();
+                }
+                Err(err) => {
+                    shared
+                        .status
+                        .set_text(&format!("Cannot open {path:?}: {err}"));
+                    if !path.is_file() {
+                        // The file is gone: it must not come back on the next
+                        // start.
+                        shared
+                            .session
+                            .borrow_mut()
+                            .recent_files
+                            .retain(|recent| recent != &path);
+                    }
+                }
+            }
+            shared.refresh_recent_menu();
+            shared.update_status();
+        });
+        group.add_action(&action);
+    }
+
+    {
+        let shared = shared.clone();
+        // GTK sets the state of this action while the submenu is open: that
+        // is the moment to rebuild the rows.
+        let action =
+            gio::SimpleAction::new_stateful("recent-open", None, &glib::Variant::from(false));
+        action.connect_change_state(move |action, value| {
+            let open = value.and_then(|value| value.get::<bool>()).unwrap_or(false);
+            if open {
+                shared.refresh_recent_menu();
+            }
+            action.set_state(&glib::Variant::from(open));
+        });
+        group.add_action(&action);
+    }
+
+    {
+        // The row of an empty list cannot do anything, so its action stays
+        // disabled.
+        let action = gio::SimpleAction::new("recent-empty", None);
+        action.set_enabled(false);
         group.add_action(&action);
     }
 
@@ -591,6 +709,7 @@ fn open_file(shared: &Rc<Shared>) {
             let session = build_session(&shared);
             let _ = session.save();
         }
+        shared.refresh_recent_menu();
         shared.update_status();
     });
 }

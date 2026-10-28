@@ -3,6 +3,7 @@ pub mod findbar;
 pub mod notebook;
 pub mod paths;
 pub mod prefs;
+pub mod recent;
 pub mod search;
 pub mod session;
 pub mod theme;
