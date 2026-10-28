@@ -20,7 +20,7 @@ Status legend:
 | Feature | Status | Notes |
 |---|---|---|
 | Native Linux GTK4 | wired | `gtk4` 0.11 (Rust edition 2024), `HeaderBar` window, menu button, status bar. The editor is a custom `gtk4::Widget` subclass. |
-| Self-drawn editor core | wired | Line-number gutter, current-line highlight, blinking caret, self-managed viewport and scrolling, mouse-wheel scrolling, caret auto-scrolled into view. The selection is painted per row, and the caret is painted on the column it is actually on. |
+| Self-drawn editor core | wired | Line-number gutter, current-line highlight, blinking caret, self-managed viewport and scrolling, mouse-wheel scrolling, caret auto-scrolled into view. The selection is painted per row, and the caret is painted on the column it is actually on. The gutter width follows the measured digit advance, so the line numbers of a long file stay inside the gutter. |
 | Keyboard input and IME | wired | `EventControllerKey` with a real `gtk4::IMContext`; typed characters, `Return`, `BackSpace`, `Delete`, `Tab`, arrows, `Home`/`End`, `Ctrl+Home`/`Ctrl+End`. |
 | Undo / redo | wired | Structured edit stack (`Edit { start, old, new, kind }`) on top of the rope, with an 800 ms merge window for consecutive typing. Bound to `Ctrl+Z` / `Ctrl+Y`. |
 | Light / dark theme | wired | `Theme` / `ThemeMode` palettes drive every editor colour (background, gutter, caret, selection, current line) and `EditorView::set_theme` repaints immediately. **View → Toggle Theme** (`Ctrl+D`) switches the palette at runtime and saves the choice to the preferences file. The window chrome — toplevel background, menubar, header bar, status bar — is themed from the same palette. |
@@ -29,6 +29,7 @@ Status legend:
 | Encoding & line endings | wired | `src/fs/io.rs`: BOM detection for UTF-8 / UTF-16 LE / UTF-16 BE, strict UTF-8 validation, GBK and Latin-1 fallback, bytes are never silently dropped. Text is `\n`-normalised in memory and the original EOL (`LF` / `CRLF` / `CR`) and BOM are restored on write. **Open...** and **Save As...** use GTK file dialogs, but there is no encoding or EOL chooser yet. |
 | Session restore | wired | `src/ui/session.rs` defines open files, per-tab caret/scroll position, active tab, recent files and window size; `src/ui/prefs.rs` persists theme, font family/size, tab width, wrapping and the "restore session" flag. The session is written when the window closes and read back at startup: every open file is reopened, the caret and the scroll offset of each tab are reapplied, the active tab is selected again, and the window keeps its size. When the restored scroll would leave the caret off screen — a hand-written session, or a file that changed since it was saved — the caret is pulled back into view. Closing a window with unsaved changes asks **Cancel** / **Save** / **Discard** per tab first. |
 | Multiple tabs | wired | `src/ui/notebook.rs` owns a GTK notebook with one buffer and independent path, encoding, EOL, language, undo history and dirty state per tab. Closing a modified tab prompts **Cancel** / **Save** / **Discard**. |
+| Recent files | wired | **File → Recent files** lists the files that were opened last, newest first. The rows are rebuilt every time the submenu is opened, so a file that disappeared is dropped from the list; an empty list shows a disabled *No recent files* row. |
 | Bookmarks | wired | `Ctrl+B` toggles a bookmark on the caret's line; `F2` and `Shift+F2` jump to the next and previous bookmark and wrap at the ends. The gutter paints an amber mark on every bookmarked line, and the set is stored per tab in the session file and restored with it. Bookmarks of untitled tabs live only for the run. |
 
 ---
@@ -122,11 +123,7 @@ if those tools are available.
 - No code completion / IntelliSense.
 - No code folding.
 - No encoding or line-ending chooser; detection and restore are automatic.
-- The recent-files list is persisted but has no menu entry yet; it is part of
-  the session file only.
-- The gutter reserves a fixed 8 px per line-number digit, which does not match
-  the real font advance, so the numbers can overlap the text in files with more
-  than two digits.
+- The recent-files list is persisted and shown in **File → Recent files**.
 - Bookmarks are line numbers, so they are not remapped when lines are inserted
   or deleted above them.
 - No `.deb` / Flatpak packaging yet — only the release binary and the desktop
