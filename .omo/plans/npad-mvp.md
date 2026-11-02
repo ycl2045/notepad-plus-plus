@@ -149,7 +149,7 @@ tests/
 
 仍待完成（下一批）：
 
-1. **最近文件菜单的手工验收**：GTK 弹层不在离屏截图范围内，`File → Recent files` 的弹出内容需在真实会话里目视确认。验收脚本：`tools/manual-recent-files.sh`（含一个已删除的文件，用于看剔除）、`tools/manual-recent-files.sh --empty`（看空态占位行）。
+1. **最近文件菜单的目视确认**：功能已在真实 Wayland 会话上端到端验证（程序化激活 File 菜单 → 点击 Recent files → 嵌套弹层 `visible = true`，里面是三个被正确剔除过的文件路径）。剩余的只是"人眼看一眼"这一步：验收脚本 `tools/manual-recent-files.sh`（含一个已删除的文件，用于看剔除）、`tools/manual-recent-files.sh --empty`（看空态占位行）。
 2. 编码 / EOL 选择器、书签随增删行重映射、宏与插件等仍在本 MVP 范围之外。
 
 已核实（本机 GTK 4.22.4 源码）：`submenu-action` 是**客户端驱动**协议 —— `gtk_menu_tracker_item_request_submenu_shown()` 发现该属性后不直接显示子菜单，而是建 `GtkMenuTrackerOpener`，由它在动作状态为 TRUE 时才 `set_submenu_shown(TRUE)`，同时先 `change_action_state(TRUE)` 反过来请求客户端打开。应用因此**必须**在 `change-state` 回调里把状态置回 TRUE，否则子菜单永不弹出。
