@@ -195,6 +195,11 @@ impl App {
         let menu = build_menu(&recent_menu);
         let menu_bar = gtk4::PopoverMenuBar::from_model(Some(&menu));
 
+        let close_shared = shared.clone();
+        shared
+            .tabs
+            .set_close_handler(move |index| close_tab_at(&close_shared, index));
+
         let notebook = tabs.notebook();
         notebook.set_hexpand(true);
         notebook.set_vexpand(true);
@@ -981,6 +986,11 @@ fn close_tab(shared: &Rc<Shared>) {
     let Some(index) = shared.tabs.current_index() else {
         return;
     };
+    close_tab_at(shared, index);
+}
+
+/// Close the tab at `index`, asking about unsaved changes.
+fn close_tab_at(shared: &Rc<Shared>, index: usize) {
     let shared_for_dialog = shared.clone();
     shared
         .tabs
@@ -1223,6 +1233,7 @@ fn css_for(mode: ThemeMode, prefs: &Prefs) -> String {
          headerbar {{ min-height: 34px; background: {panel}; }}
          menubar {{ background: {panel}; color: {fg}; }}
          notebook header {{ background: {panel}; }}
+         .npad-tab-close {{ padding: 0; min-width: 16px; min-height: 16px; margin-left: 6px; }}
          .npad-status {{ background: {panel}; color: {fg}; }}
          label {{ font-family: {family}; font-size: {size}pt; color: {fg}; }}
          button {{ background-image: none; background-color: {panel}; color: {fg}; border: 1px solid {border}; }}

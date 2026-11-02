@@ -79,6 +79,8 @@ struct Inner {
     /// Counter for the `Untitled N` names.
     untitled: usize,
     theme: Theme,
+    /// Called when the user clicks the close button of a tab.
+    close_handler: Option<Rc<dyn Fn(usize)>>,
 }
 
 /// Tabbed container for the open documents.
@@ -99,8 +101,37 @@ impl TabManager {
                 tabs: Vec::new(),
                 untitled: 0,
                 theme,
+                close_handler: None,
             })),
         }
+    }
+
+    /// Set the callback that closes a tab when its close button is clicked.
+    ///
+    /// The decision about unsaved changes belongs to the application, so the
+    /// notebook only reports the request.
+    pub fn set_close_handler(&self, handler: impl Fn(usize) + 'static) {
+        self.inner.borrow_mut().close_handler = Some(Rc::new(handler));
+    }
+
+    /// The button that closes a tab.
+    fn new_close_button(&self) -> gtk4::Button {
+        let close = gtk4::Button::from_icon_name("window-close-symbolic");
+        close.add_css_class("npad-tab-close");
+        close.set_focusable(false);
+        close.set_tooltip_text(Some("Close this tab"));
+        close
+    }
+
+    /// Let the close button of the tab at `index` ask for the tab to close.
+    fn connect_close_button(&self, button: &gtk4::Button, index: usize) {
+        let manager = self.clone();
+        button.connect_clicked(move |_| {
+            let handler = manager.inner.borrow().close_handler.clone();
+            if let Some(handler) = handler {
+                handler(index);
+            }
+        });
     }
 
     /// The notebook widget, to be put into the window.
@@ -253,8 +284,12 @@ impl TabManager {
             editor.load_text(text);
         }
         let label = gtk4::Label::new(Some(&name));
+        let close = self.new_close_button();
+        let tab_widget = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+        tab_widget.append(&label);
+        tab_widget.append(&close);
         let notebook = self.inner.borrow().notebook.clone();
-        let page = notebook.append_page(&editor, Some(&label));
+        let page = notebook.append_page(&editor, Some(&tab_widget));
         let index = {
             let mut inner = self.inner.borrow_mut();
             inner.tabs.push(Tab {
@@ -273,6 +308,7 @@ impl TabManager {
             });
             inner.tabs.len() - 1
         };
+        self.connect_close_button(&close, index);
         notebook.set_current_page(Some(page));
         index
     }
@@ -296,8 +332,12 @@ impl TabManager {
         editor.load_text(&read.text);
         let name = file_name_of(path);
         let label = gtk4::Label::new(Some(&name));
+        let close = self.new_close_button();
+        let tab_widget = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+        tab_widget.append(&label);
+        tab_widget.append(&close);
         let notebook = self.inner.borrow().notebook.clone();
-        let page = notebook.append_page(&editor, Some(&label));
+        let page = notebook.append_page(&editor, Some(&tab_widget));
         let index = {
             let mut inner = self.inner.borrow_mut();
             inner.tabs.push(Tab {
@@ -316,6 +356,7 @@ impl TabManager {
             });
             inner.tabs.len() - 1
         };
+        self.connect_close_button(&close, index);
         notebook.set_current_page(Some(page));
         Ok(index)
     }
