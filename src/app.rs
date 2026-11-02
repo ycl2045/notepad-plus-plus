@@ -342,9 +342,6 @@ fn build_menu(recent: &gio::Menu) -> gio::Menu {
     file_menu.append(Some("New"), Some("app.new"));
     file_menu.append(Some("Open..."), Some("app.open"));
     let recent_item = gio::MenuItem::new_submenu(Some("Recent files"), recent);
-    // GTK tracks the open state of the submenu in this action: that is when
-    // the rows have to be rebuilt.
-    recent_item.set_attribute_value("submenu-action", Some(&"app.recent-open".to_variant()));
     file_menu.append_item(&recent_item);
     file_menu.append(Some("Save"), Some("app.save"));
     file_menu.append(Some("Save As..."), Some("app.save-as"));
@@ -469,22 +466,6 @@ fn build_actions(shared: &Rc<Shared>, group: &gio::SimpleActionGroup) {
             }
             shared.refresh_recent_menu();
             shared.update_status();
-        });
-        group.add_action(&action);
-    }
-
-    {
-        let shared = shared.clone();
-        // GTK sets the state of this action while the submenu is open: that
-        // is the moment to rebuild the rows.
-        let action =
-            gio::SimpleAction::new_stateful("recent-open", None, &glib::Variant::from(false));
-        action.connect_change_state(move |action, value| {
-            let open = value.and_then(|value| value.get::<bool>()).unwrap_or(false);
-            if open {
-                shared.refresh_recent_menu();
-            }
-            action.set_state(&glib::Variant::from(open));
         });
         group.add_action(&action);
     }

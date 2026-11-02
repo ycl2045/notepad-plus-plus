@@ -152,4 +152,6 @@ tests/
 1. **最近文件菜单的手工验收**：GTK 弹层不在离屏截图范围内，`File → Recent files` 的弹出内容需在真实会话里目视确认。验收脚本：`tools/manual-recent-files.sh`（含一个已删除的文件，用于看剔除）、`tools/manual-recent-files.sh --empty`（看空态占位行）。
 2. 编码 / EOL 选择器、书签随增删行重映射、宏与插件等仍在本 MVP 范围之外。
 
-已核实（本机 GTK 4.22.4 源码）：`submenu-action` 是**客户端驱动**协议 —— `gtk_menu_tracker_item_request_submenu_shown()` 发现该属性后不直接显示子菜单，而是建 `GtkMenuTrackerOpener`，由它在动作状态为 TRUE 时才 `set_submenu_shown(TRUE)`，同时先 `change_action_state(TRUE)` 反过来请求客户端打开。应用因此**必须**在 `change-state` 回调里把状态置回 TRUE，否则子菜单永不弹出。本实现先重建模型、再 `set_state(true)`，顺序即"刷新 → 置位 → GTK 显示"，弹层出现时行已是新的；模型改动由 `GtkMenuTracker` 同步消费（"items-changed" → 增删行），且发生在子菜单显示之前，无重入风险。
+已核实（本机 GTK 4.22.4 源码）：`submenu-action` 是**客户端驱动**协议 —— `gtk_menu_tracker_item_request_submenu_shown()` 发现该属性后不直接显示子菜单，而是建 `GtkMenuTrackerOpener`，由它在动作状态为 TRUE 时才 `set_submenu_shown(TRUE)`，同时先 `change_action_state(TRUE)` 反过来请求客户端打开。应用因此**必须**在 `change-state` 回调里把状态置回 TRUE，否则子菜单永不弹出。
+
+**该协议最终被移除**（提交 `feat: a recent files submenu that refreshes when it is opened` 之后）：它并非必需 —— 最近列表只在"打开文件"时变化，而模型在启动时和每次列表变化后都已重建，用户打开菜单时它本来就是最新的；而且应用里现成的 **Language 子菜单**（普通嵌套子菜单、无任何协议）一直能正常弹出，说明嵌套弹层本身没问题。移除后 "Recent files" 与 "Language" 走完全相同的标准路径。
